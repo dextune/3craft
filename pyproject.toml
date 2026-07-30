@@ -21,7 +21,7 @@ classifiers = [
 ]
 dependencies = [
   "fastapi==0.136.1",
-  "pillow==12.2.0",
+  "pillow==12.3.0",
   "pydantic==2.13.4",
   "python-multipart==0.0.32",
   "uvicorn==0.47.0",
