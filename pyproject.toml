@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools==83.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "threecraft"
+version = "0.1.0"
+description = "Deterministic image-to-Minecraft voxel sculpture pipeline"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "3Craft contributors" }]
+keywords = ["minecraft", "schematic", "voxel", "threejs", "fastapi"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+dependencies = [
+  "fastapi==0.136.1",
+  "pillow==12.2.0",
+  "pydantic==2.13.4",
+  "python-multipart==0.0.32",
+  "uvicorn==0.47.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx==0.28.1",
+  "nbtlib==2.0.4",
+  "pytest==9.1.0",
+]
+
+[project.scripts]
+threecraft = "threecraft.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/dextune/3craft"
+Repository = "https://github.com/dextune/3craft.git"
+Issues = "https://github.com/dextune/3craft/issues"
+Documentation = "https://github.com/dextune/3craft/tree/HEAD/docs"
+
+[tool.setuptools.packages.find]
+include = ["threecraft*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["threecraft"]
