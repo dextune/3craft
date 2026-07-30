@@ -72,11 +72,11 @@ class LocalJobManager:
             asset_exists = self.pipeline.store.asset_exists(asset_id)
         except ValueError as exc:
             raise ThreeCraftError(
-                "ASSET_NOT_FOUND", "이미지 asset을 찾을 수 없습니다.", status_code=404
+                "ASSET_NOT_FOUND", "The image asset was not found.", status_code=404
             ) from exc
         if not asset_exists:
             raise ThreeCraftError(
-                "ASSET_NOT_FOUND", "이미지 asset을 찾을 수 없습니다.", status_code=404
+                "ASSET_NOT_FOUND", "The image asset was not found.", status_code=404
             )
         request_hash = content_hash({"assetId": asset_id, "settings": settings.to_dict()})
         with self._lock:
@@ -87,7 +87,7 @@ class LocalJobManager:
                     if previous_hash != request_hash:
                         raise ThreeCraftError(
                             "IDEMPOTENCY_CONFLICT",
-                            "같은 Idempotency-Key가 다른 요청에 사용되었습니다.",
+                            "The same Idempotency-Key was used for a different request.",
                             status_code=409,
                         )
                     return self._jobs[previous_job_id]
@@ -138,7 +138,7 @@ class LocalJobManager:
             logger.exception("Unhandled pipeline error for job %s", job_id)
             error = {
                 "code": "INTERNAL_PIPELINE_ERROR",
-                "message": "변환 중 내부 오류가 발생했습니다.",
+                "message": "An internal error occurred during conversion.",
                 "retryable": False,
                 "remedies": [],
             }
@@ -155,7 +155,7 @@ class LocalJobManager:
         with self._lock:
             job = self._jobs.get(job_id)
             if not job:
-                raise ThreeCraftError("JOB_NOT_FOUND", "변환 job을 찾을 수 없습니다.", status_code=404)
+                raise ThreeCraftError("JOB_NOT_FOUND", "The conversion job was not found.", status_code=404)
             return job
 
     def wait(self, job_id: str, timeout: float = 30.0) -> JobRecord:
@@ -180,7 +180,7 @@ class LocalJobManager:
                 return job
             raise ThreeCraftError(
                 "CANCEL_NOT_SAFE",
-                "현재 단계는 즉시 취소할 수 없습니다.",
+                "The current stage cannot be cancelled safely at this time.",
                 status_code=409,
                 remedies=["wait-for-current-stage"],
             )

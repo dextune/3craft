@@ -1,16 +1,16 @@
-# 3Craft 기여 가이드
+# 3Craft Contribution Guide
 
-3Craft에 관심을 가져주셔서 감사합니다. 현재 저장소는 이미지에서 Minecraft Java Edition용 2.5D relief와 Sponge v3 `.schem`을 만드는 **local MVP**입니다. 실제 AI mesh reconstruction이나 production multi-tenant service로 오해될 변경은 받지 않습니다.
+Thank you for your interest in 3Craft. This repository is currently a **local MVP** that turns images into 2.5D reliefs and Sponge v3 `.schem` files for Minecraft Java Edition. We do not accept changes that could misrepresent it as real AI mesh reconstruction or a production multi-tenant service.
 
-## 시작하기
+## Getting started
 
-요구 사항:
+Requirements:
 
 - Python 3.12+
-- Node.js 20.19+, 22.12+ 또는 24+
+- Node.js 20.19+, 22.12+, or 24+
 - npm
 
-개발 환경:
+Development environment:
 
 ```bash
 python3 -m venv .venv
@@ -19,42 +19,44 @@ npm --prefix apps/web ci
 make check
 ```
 
-로컬 API와 Web을 함께 실행하려면 다음을 사용합니다.
+Run the local API and Web app together with:
 
 ```bash
 ./scripts/dev.sh
 ```
 
-두 server는 loopback에만 bind합니다. runtime artifact는 `.threecraft-data/`에 저장되며 Git에 포함하면 안 됩니다.
+Both servers bind only to loopback. Runtime artifacts are stored under `.threecraft-data/` and must not be committed to Git.
 
-## Issue와 보안 보고
+## Issues and security reports
 
-- 재현 가능한 bug와 일반 feature 제안은 GitHub Issue template을 사용해 주세요.
-- 취약점, path traversal, malicious upload bypass, artifact disclosure 가능성은 공개 Issue에 작성하지 말고 [보안 정책](SECURITY.md)을 따라 주세요.
-- 실제 AI provider, hosted storage 또는 외부 URL fetch를 추가하는 변경은 data policy, license, cost와 egress 검토가 먼저 필요합니다.
+- Use the GitHub issue templates for reproducible bugs and general feature proposals.
+- Do not open a public issue for vulnerabilities, path traversal, malicious-upload bypasses, or possible artifact disclosure. Follow the [Security Policy](SECURITY.md) instead.
+- Changes that add a real AI provider, hosted storage, or external URL fetching require prior review of data policy, licensing, cost, and egress.
 
-## 핵심 불변조건
+## Core invariants
 
-변경 시 다음 계약을 유지해야 합니다.
+Changes must preserve these contracts:
 
-1. generated/edited asset을 `observed` evidence로 표시하지 않습니다.
-2. invalid input, sufficiency blocker 또는 delivery gate 실패 시 결과 다운로드를 공개하지 않습니다.
-3. semantic hash는 palette index 순서가 아니라 block state와 좌표 의미를 반영합니다.
-4. palette index 0은 `minecraft:air`이며 occupied block에 사용할 수 없습니다.
-5. 지원되는 export는 Java 1.20.4/DataVersion 3700의 Sponge Schematic v3입니다.
-6. frontend는 block마다 React component를 만들지 않고 instancing을 사용합니다.
-7. Three.js geometry, material, controls, observer와 animation loop를 명시적으로 정리합니다.
-8. 임의 URL image fetch, secret 하드코딩과 사용자 파일의 외부 전송을 추가하지 않습니다.
+1. A supplied image takes precedence; generation is used only when no image is supplied.
+2. Invalid supplied images fail closed and must never trigger generated fallback content.
+3. Generated or edited assets must never be labeled as `observed` evidence.
+4. Downloads must remain unavailable after invalid input, a sufficiency blocker, or a failed delivery gate.
+5. Semantic hashes reflect block states and coordinate meaning, not palette-index order.
+6. Palette index 0 is `minecraft:air` and cannot be used for an occupied block.
+7. The supported export target is Sponge Schematic v3 for Java 1.20.4/DataVersion 3700.
+8. The frontend uses instancing rather than one React component per block.
+9. Three.js geometry, materials, controls, observers, and animation loops are disposed explicitly.
+10. Do not add arbitrary URL image fetching, hard-coded secrets, or external transmission of user files.
 
-## 변경 절차
+## Change procedure
 
-1. 관련 Issue가 있으면 먼저 연결합니다.
-2. 한 변경에는 한 가지 목적을 유지합니다.
-3. 동작이나 계약을 바꾸면 테스트와 문서를 같은 변경에 포함합니다.
-4. source file만 stage하고 `.venv`, `node_modules`, `dist`, runtime artifact를 제외합니다.
-5. PR 본문에 검증 명령과 결과, 알려진 한계 및 보안 영향을 적습니다.
+1. Link a relevant issue first when one exists.
+2. Keep each change focused on one purpose.
+3. Include tests and documentation whenever behavior or a contract changes.
+4. Stage only source files; exclude `.venv`, `node_modules`, `dist`, and runtime artifacts.
+5. Document validation commands and results, known limitations, and security effects in the pull request.
 
-권장 commit 형식은 `type(scope): summary`입니다. 예:
+Use the recommended commit format `type(scope): summary`. Examples:
 
 ```text
 feat(export): validate Sponge v3 block data
@@ -62,22 +64,22 @@ fix(viewer): dispose instanced resources on rebuild
 docs(readme): clarify local MVP limitations
 ```
 
-## 필수 검증
+## Required validation
 
-최소 검증:
+Minimum validation:
 
 ```bash
 .venv/bin/python -m pytest -q
 npm --prefix apps/web run build
 ```
 
-dependency나 설치 절차를 바꿨다면 clean venv와 `npm ci`에서도 재현해야 합니다. Schematic 변경은 자체 reader뿐 아니라 독립 `nbtlib` parse를 통과해야 합니다.
+If dependencies or installation steps change, reproduce the result in a clean virtual environment and with `npm ci`. Schematic changes must pass both the built-in reader and an independent `nbtlib` parse.
 
-## 문서
+## Documentation
 
-- [현재 구현 상태와 검증 증거](docs/implementation-status.md)
-- [전체 제품·기술 계획](docs/plan/README.md)
-- [보안 정책](SECURITY.md)
+- [Current implementation status and validation evidence](docs/implementation-status.md)
+- [Complete product and technical plan](docs/plan/README.md)
+- [Security Policy](SECURITY.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-기여를 제출하면 해당 기여물을 저장소의 [MIT License](LICENSE)로 배포하는 데 동의하는 것으로 간주합니다.
+By submitting a contribution, you agree that it may be distributed under the repository's [MIT License](LICENSE).

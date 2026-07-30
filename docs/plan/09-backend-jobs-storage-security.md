@@ -1,59 +1,62 @@
-# Backend, Job, Storage와 Security 계획
+# Backend, Jobs, Storage, and Security Plan
 
-## 1. 책임 경계
+> [!NOTE]
+> Sections describing Postgres, Redis, object storage, authentication, signed URLs, and durable recovery are target production architecture. The current executable MVP uses a process-local worker and private local filesystem store and must remain loopback-only.
+
+## 1. Responsibility boundaries
 
 API:
 
-- 인증/owner
-- request validation
-- quota/rate limit
-- metadata transaction
-- upload/download authorization
-- job 생성/조회/cancel
-- queue publish
+- authentication/owner in production;
+- request validation;
+- quota/rate limits;
+- metadata transactions;
+- upload/download authorization;
+- job create/read/cancel;
+- queue publication in production.
 
 Worker:
 
-- stage 실행
-- artifact read/write
-- provider 호출
-- stage profile/heartbeat
-- gate와 결과 manifest
+- stage execution;
+- artifact reads/writes;
+- provider calls;
+- stage profiles/heartbeats;
+- gates and result manifests.
 
 Object storage:
 
-- binary/content artifact
+- binary/content artifacts.
 
 Postgres:
 
-- owner, asset/job/artifact metadata와 state
+- owner, asset/job/artifact metadata and state.
 
 Redis/queue:
 
-- 최소 job reference와 delivery/lease
+- minimal job references and delivery/leases.
 
-장시간 AI/geometry를 API request process에서 실행하지 않는다.
+Do not run long AI/geometry tasks in a production API request process. The current local worker uses a bounded thread pool behind an asynchronous job contract.
 
-## 2. API 공통 규칙
+## 2. Common API rules
 
-- prefix: `/api/v1`
-- JSON은 UTF-8
-- mutation은 `Idempotency-Key` 지원
-- opaque ID
-- ISO-8601 UTC
-- pagination은 cursor 기반
-- 오류 body 통일
-- request/correlation ID 응답
-- CORS/CSRF 정책은 배포 topology에 맞춤
-- API version과 artifact schema version을 구분
+- Prefix: `/api/v1`.
+- JSON is UTF-8.
+- Mutations support `Idempotency-Key` where applicable.
+- IDs are opaque.
+- Dates are UTC ISO-8601.
+- Production pagination is cursor-based.
+- Error bodies have one shape.
+- Responses carry request/correlation IDs.
+- CORS/CSRF policy matches deployment topology.
+- API versions and artifact-schema versions are distinct.
 
-오류 예:
+Error example:
 
 ```json
 {
   "error": {
     "code": "FOREGROUND_EMPTY",
-    "message": "이미지에서 변환할 물체를 찾지 못했습니다.",
+    "message": "No foreground subject was found for conversion.",
     "retryable": false,
     "remedies": ["upload-another-image", "edit-mask"],
     "requestId": "req_..."
@@ -61,9 +64,37 @@ Redis/queue:
 }
 ```
 
-## 3. Asset API
+## 3. Source and Asset APIs
 
-### 3.1 Upload 생성
+### 3.1 Current unified source resolution
+
+```http
+POST /api/v1/sources
+Content-Type: multipart/form-data
+```
+
+Multipart fields:
+
+- `file`: optional PNG/JPEG/WebP;
+- `prompt`: optional string.
+
+Contract:
+
+1. If `file` exists, read and validate it; it wins even when `prompt` is present.
+2. Empty/corrupt/unsupported supplied content fails closed.
+3. If `file` is absent, generate from a nonblank prompt or the deterministic default.
+4. A null provider still permits uploads but returns 503 for prompt-only fallback.
+5. No URL source is accepted and no user image is sent externally.
+
+A successful response is the same asset/sense/sufficiency summary returned by legacy source operations.
+
+### 3.2 Current explicit asset operations
+
+- `POST /api/v1/assets`: legacy direct upload/canonicalization.
+- `GET /api/v1/assets/{id}`: asset, SensePack, and sufficiency.
+- `GET /api/v1/assets/{id}/image`: private canonical source image with no-store/nosniff controls.
+
+### 3.3 Target production upload session
 
 ```http
 POST /api/v1/assets/uploads
@@ -79,7 +110,7 @@ Idempotency-Key: ...
 }
 ```
 
-응답:
+Response:
 
 ```json
 {
@@ -89,22 +120,19 @@ Idempotency-Key: ...
 }
 ```
 
-### 3.2 Upload complete
+Completion:
 
 ```http
 POST /api/v1/assets/{assetId}/complete
 ```
 
-서버가 object HEAD만 보고 ready로 만들지 않는다. validation job 또는 안전한 API-side decoder가 signature/size/decode를 확인한다.
+Never mark an object ready from HEAD alone. A validation job or safe API-side decoder checks signature, size, and decoding.
 
-### 3.3 Asset 조회/삭제
+Production deletion uses `DELETE /api/v1/assets/{id}` and an asynchronous tombstone after checking active-job dependencies, retention, and lineage.
 
-- `GET /api/v1/assets/{id}`
-- `DELETE /api/v1/assets/{id}`
+## 4. Image-generation API
 
-삭제는 실행 중 job dependency, retention과 artifact lineage를 확인하고 asynchronous tombstone으로 처리한다.
-
-## 4. Image generation API
+Legacy current endpoint:
 
 ```http
 POST /api/v1/image-generations
@@ -112,14 +140,24 @@ POST /api/v1/image-generations
 
 ```json
 {
-  "prompt": "작은 판타지 용 조각상",
+  "prompt": "small fantasy dragon sculpture"
+}
+```
+
+The current deterministic provider responds synchronously with a local procedural illustration and provenance. It is not AI generation.
+
+Target production request:
+
+```json
+{
+  "prompt": "small fantasy dragon sculpture",
   "count": 1,
   "aspectRatio": "1:1",
   "profile": "single-object"
 }
 ```
 
-응답은 `202`와 job ID다. 완료 artifact는 asset ID 목록이다. provider URL/response를 외부 계약에 직접 노출하지 않는다.
+The production response is `202` plus a job ID, with completed asset IDs. Never expose provider URLs or raw responses as the external contract. The image-generation endpoint is never used as an implicit retry for a supplied invalid image.
 
 ## 5. Conversion API
 
@@ -128,20 +166,20 @@ POST /api/v1/conversions
 Idempotency-Key: ...
 ```
 
-body는 [04-contracts-and-data-model.md](04-contracts-and-data-model.md)의 `ConversionRequest`를 따른다.
+The current request contains `sourceAssetId`, deterministic `strategy=relief`, `maxAxis`, `fillMode`, and `paletteProfile=safe-basic`. The target request expands toward [04-contracts-and-data-model.md](04-contracts-and-data-model.md).
 
-서버 validation:
+Server validation:
 
-- owner가 ReferenceSet asset에 접근 가능
-- asset ready
-- sufficiency policy/override
-- strategy capability
-- resolution/quota
-- palette/target compatibility
-- concurrent job limit
-- canonical request hash
+- owner can access ReferenceSet assets in production;
+- asset is ready;
+- sufficiency policy/override permits conversion;
+- strategy capability exists;
+- resolution/quota is allowed;
+- palette/target are compatible;
+- concurrent-job limit allows admission;
+- request hash is canonical.
 
-응답:
+Response:
 
 ```json
 {
@@ -158,125 +196,140 @@ body는 [04-contracts-and-data-model.md](04-contracts-and-data-model.md)의 `Con
 
 ## 6. Job API
 
-- `GET /api/v1/jobs/{id}`
-- `GET /api/v1/jobs/{id}/events` SSE
-- `POST /api/v1/jobs/{id}/cancel`
-- `POST /api/v1/jobs/{id}/retry`
-- `POST /api/v1/jobs/{id}/clone` 설정 변경용
+Current:
 
-SSE event:
+- `GET /api/v1/jobs/{id}`;
+- `POST /api/v1/jobs/{id}/cancel`.
 
-- snapshot
-- stage_changed
-- progress
-- warning
-- retry_wait
-- completed
-- failed
-- cancelled
-- heartbeat
+Production target:
 
-SSE가 job을 소유하지 않는다. 연결 종료 후에도 실행되며 client는 last event/polling으로 복구한다.
+- `GET /api/v1/jobs/{id}/events` via SSE;
+- `POST /api/v1/jobs/{id}/retry`;
+- `POST /api/v1/jobs/{id}/clone` for changed settings.
+
+SSE event types:
+
+- snapshot;
+- stage_changed;
+- progress;
+- warning;
+- retry_wait;
+- completed;
+- failed;
+- cancelled;
+- heartbeat.
+
+SSE does not own the job. Execution continues after disconnect, and clients recover from the last event or polling.
 
 ## 7. Artifact API
 
-- `GET /api/v1/jobs/{id}/artifacts`
-- `POST /api/v1/artifacts/{id}/download`
+Current validated artifact routes:
 
-다운로드 endpoint:
+- `GET /api/v1/jobs/{id}/preview`;
+- `GET /api/v1/jobs/{id}/bom`;
+- `GET /api/v1/jobs/{id}/schematic`.
 
-1. auth/session
-2. owner scope
-3. artifact `published`
-4. expiry/retention
-5. content disposition safe name
-6. 짧은 signed URL 또는 stream
-7. audit event
+They require a completed job and return private/no-store data.
 
-IDOR 테스트를 필수로 둔다.
+Production target:
 
-## 8. Postgres 모델
+- `GET /api/v1/jobs/{id}/artifacts`;
+- `POST /api/v1/artifacts/{id}/download`.
+
+A production download endpoint checks:
+
+1. authentication/session;
+2. owner scope;
+3. artifact state is `published`;
+4. expiry/retention;
+5. safe content-disposition name;
+6. short-lived signed URL or stream;
+7. audit event.
+
+IDOR tests are mandatory.
+
+## 8. Postgres model (production target)
 
 ### 8.1 owners/sessions
 
-- owner/user ID
-- anonymous session ID
-- plan/quota class
-- status
-- created/last seen/expiry
+- owner/user ID;
+- anonymous session ID;
+- plan/quota class;
+- status;
+- created/last-seen/expiry.
 
-anonymous alpha는 signed HttpOnly session cookie, 짧은 retention과 낮은 quota를 사용한다.
+Anonymous alpha sessions use signed HttpOnly cookies, short retention, and low quotas.
 
 ### 8.2 assets
 
-- id/owner
-- kind/origin/evidence class
-- status
-- display filename
-- canonical MIME/size/hash/dimensions
-- private storage key
-- provenance JSON
-- created/ready/expires/deleted timestamps
-- version
+- ID/owner;
+- kind/origin/evidence class;
+- status;
+- display filename;
+- canonical MIME/size/hash/dimensions;
+- private storage key;
+- provenance JSON;
+- created/ready/expires/deleted timestamps;
+- version.
 
-status:
+States:
 
-- pending_upload
-- uploaded
-- validating
-- ready
-- rejected
-- expired
-- deleting
-- deleted
+- pending_upload;
+- uploaded;
+- validating;
+- ready;
+- rejected;
+- expired;
+- deleting;
+- deleted.
 
 ### 8.3 reference_sets
 
-- id/owner
-- schema version
-- manifest JSON 또는 artifact ID
-- content hash
-- primary asset
-- created
+- ID/owner;
+- schema version;
+- manifest JSON or artifact ID;
+- content hash;
+- primary asset;
+- created timestamp.
 
 ### 8.4 jobs
 
-- id/owner/kind
-- status/stage/progress
-- request JSON/hash
-- idempotency key
-- pipeline version
-- active attempt
-- cancellation
-- error code/public message/operator reference
-- timestamps
-- optimistic version
+- ID/owner/kind;
+- status/stage/progress;
+- request JSON/hash;
+- idempotency key;
+- pipeline version;
+- active attempt;
+- cancellation state;
+- error code/public message/operator reference;
+- timestamps;
+- optimistic version.
 
-unique constraint는 owner + endpoint scope + idempotency key에 둔다.
+Apply a unique constraint to owner + endpoint scope + idempotency key.
 
 ### 8.5 attempts
 
-- id/job/number
-- worker/lease expiry/heartbeat
-- state/stage cursor
-- retry cause
-- profile JSON
-- started/ended
+- ID/job/number;
+- worker/lease expiry/heartbeat;
+- state/stage cursor;
+- retry cause;
+- profile JSON;
+- started/ended.
 
 ### 8.6 artifacts
 
-- id/job/owner
-- kind/state/schema version
-- storage key
-- MIME/byte/hash/semantic hash
-- producer/parent metadata
-- created/validated/published/expires/deleted
+- ID/job/owner;
+- kind/state/schema version;
+- storage key;
+- MIME/bytes/hash/semantic hash;
+- producer/parent metadata;
+- created/validated/published/expires/deleted.
 
 ### 8.7 events/outbox
 
-job event와 queue publish outbox를 transaction으로 연결해 DB job은 생겼지만 queue message가 사라지는 문제를 막는다. outbox relay는 idempotent해야 한다.
+Commit job events and queue-publication outbox records in one transaction so a persisted job cannot lose its queue message. The outbox relay is idempotent.
 
-## 9. Queue message와 delivery
+## 9. Queue messages and delivery
 
 ```json
 {
@@ -287,217 +340,222 @@ job event와 queue publish outbox를 transaction으로 연결해 DB job은 생�
 }
 ```
 
-금지:
+Forbidden in queue messages:
 
-- image bytes
-- secret
-- signed URL
-- user prompt 전체
-- mutable settings copy
+- image bytes;
+- secrets;
+- signed URLs;
+- complete user prompts;
+- mutable copies of settings.
 
-queue는 at-least-once로 가정한다. worker가 DB lease를 CAS로 얻지 못하면 메시지를 중복 실행하지 않는다.
+Assume at-least-once delivery. A worker that cannot acquire the database lease by CAS does not execute a duplicate message.
 
-queue 분리 후보:
+Candidate queues:
 
-- intake/cpu
-- reconstruction/gpu
-- voxel-export/cpu
-- image-generation/provider
+- intake/CPU;
+- reconstruction/GPU;
+- voxel-export/CPU;
+- image-generation/provider.
 
-초기에는 단일 orchestration queue와 capability routing으로 시작하고 지표가 필요성을 보여주면 분리한다.
+Start with one orchestration queue and capability routing; split only when metrics justify it.
 
-## 10. Worker lease와 heartbeat
+## 10. Worker leases and heartbeats
 
-1. message 수신
-2. terminal job 여부 확인
-3. lease 획득(CAS)
-4. attempt 생성/복구
-5. heartbeat loop
-6. stage 실행
-7. stage manifest commit
-8. 다음 stage 또는 terminal transition
-9. message ack
+1. Receive a message.
+2. Check whether the job is terminal.
+3. Acquire a lease with CAS.
+4. Create/recover an attempt.
+5. Start heartbeat loop.
+6. Execute stage.
+7. Commit stage manifest.
+8. Move to the next stage or terminal transition.
+9. Acknowledge message.
 
-worker crash:
+After a worker crash:
 
-- visibility/lease timeout
-- 새 worker가 마지막 completed stage manifest 검증
-- candidate artifact checksum 확인
-- 안전 stage부터 재실행
+- wait for visibility/lease timeout;
+- have a new worker validate the last completed stage manifest;
+- verify candidate artifact checksums;
+- rerun from a safe stage.
 
-stale worker가 늦게 결과를 쓰지 못하도록 fencing token/attempt ID를 artifact commit에 검사한다.
+Check fencing token/attempt ID on artifact commit so a stale worker cannot write late output.
 
 ## 11. Retry
 
-retryable:
+Retryable:
 
-- provider transient timeout
-- rate limit with bounded retry-after
-- storage/DB temporary error
-- worker crash
-- queue lease timeout
+- transient provider timeout;
+- rate limit with bounded retry-after;
+- temporary storage/database error;
+- worker crash;
+- queue lease timeout.
 
-non-retryable:
+Non-retryable:
 
-- invalid input
-- policy/license block
-- empty/invalid mesh 반복
-- unsupported target block/version
-- deterministic export validation failure
-- quota 초과
+- invalid input;
+- policy/license block;
+- repeated empty/invalid mesh;
+- unsupported target block/version;
+- deterministic export-validation failure;
+- quota exceeded.
 
-exponential backoff + jitter, max attempts와 총 budget을 둔다. provider 호출 전후 idempotency/correlation을 확인해 중복 비용을 제한한다.
+Use exponential backoff with jitter, maximum attempts, and a total budget. Check provider idempotency/correlation before and after calls to limit duplicate cost.
 
 ## 12. Cancellation
 
-- queued: 즉시 cancelled
-- running: cancel_requested flag
-- stage는 checkpoint에서 flag 확인
-- provider cancel capability 사용
-- GPU process 강제 kill은 worker isolation 전략과 함께 사용
-- cancelled job은 published artifact를 만들지 않음
-- 이미 completed된 job cancel은 delete가 아님
+- queued: immediately cancelled;
+- running: set `cancel_requested`;
+- stages check the flag at checkpoints;
+- use provider cancellation when supported;
+- pair forced GPU-process termination with worker isolation;
+- cancelled jobs create no published artifact;
+- cancellation of an already completed job is not deletion.
 
-cancel/complete 경쟁은 하나의 versioned transition만 성공한다.
+Only one versioned transition wins a cancel/complete race.
 
 ## 13. Storage architecture
 
-bucket/prefix 분류:
+Bucket/prefix classes:
 
-- source-original
-- source-canonical
-- internal-evidence
-- internal-reconstruction
-- internal-voxel
-- published-delivery
+- source-original;
+- source-canonical;
+- internal-evidence;
+- internal-reconstruction;
+- internal-voxel;
+- published-delivery.
 
-하나의 bucket을 쓰더라도 IAM prefix와 lifecycle을 분리한다.
+Even in one bucket, separate IAM prefixes and lifecycle policies.
 
-원칙:
+Principles:
 
-- public access block
-- encryption at rest
-- TLS
-- server-side checksum 검증
-- signed URL TTL 최소화
-- multipart incomplete cleanup
-- lifecycle/retention
-- user filename 미사용
-- candidate→published는 DB state + immutable object, rename 의존 금지
+- public-access block;
+- encryption at rest;
+- TLS;
+- server-side checksum verification;
+- minimal signed-URL TTL;
+- incomplete multipart cleanup;
+- lifecycle/retention;
+- no user filenames in storage keys;
+- candidate → published is database state plus immutable object, not rename semantics.
 
-## 14. Security control
+The local store mirrors privacy with `0700` directories, `0600` files, validated opaque IDs, and path-containment checks.
+
+## 14. Security controls
 
 ### 14.1 Upload
 
-- magic/decode/pixel limit
-- re-encode/metadata strip
-- animation/zip/archive 거부
-- parser sandbox
-- path traversal 무관한 generated key
+- magic/decode/pixel limits;
+- re-encode and metadata stripping;
+- reject animation/ZIP/archive input;
+- parser sandbox in production;
+- generated keys immune to path traversal.
 
 ### 14.2 API
 
-- schema validation
-- authz owner scope
-- rate limit/quota
-- CSRF if cookie auth
-- CORS allowlist
-- security header
-- error redaction
-- audit sensitive action
+- schema validation;
+- owner-scoped authorization in production;
+- rate limits/quotas;
+- CSRF defense with cookie authentication;
+- CORS allowlist;
+- security headers;
+- error redaction;
+- audit sensitive actions.
 
 ### 14.3 Worker
 
-- non-root
-- read-only root filesystem
-- isolated temp dir
-- CPU/RAM/GPU/time limit
-- restricted egress
-- no user-controlled shell command
-- model weight checksum
-- temp cleanup
+- non-root;
+- read-only root filesystem;
+- isolated temporary directory;
+- CPU/RAM/GPU/time limits;
+- restricted egress;
+- no user-controlled shell commands;
+- model-weight checksums;
+- temporary cleanup.
 
-### 14.4 Secret
+### 14.4 Secrets
 
-- secret manager/CI protected secret
-- client env prefix 금지
-- log/sentry redaction
-- rotation
-- provider별 scope
+- secret manager/CI-protected secrets;
+- no client-exposed environment prefixes;
+- log/error-report redaction;
+- rotation;
+- provider-specific scopes.
 
 ### 14.5 Supply chain
 
-- exact dependency pin + lockfile
-- package name 검토
-- image digest
-- SBOM/license report
-- model/texture checksum과 license
-- vulnerability scan
+- exact dependency pins and lockfiles;
+- package-name review;
+- image digests;
+- SBOM/license report;
+- model/texture checksums and licenses;
+- vulnerability scanning.
 
-## 15. Quota와 abuse
+## 15. Quotas and abuse
 
-- upload byte/pixel
-- active jobs
-- image generation count
-- GPU seconds
-- 64/128 resolution
-- artifact storage
-- download bandwidth
-- IP/session/user rate
+- upload bytes/pixels;
+- active jobs;
+- image-generation count;
+- GPU-seconds;
+- 64/128 resolution;
+- artifact storage;
+- download bandwidth;
+- per-IP/session/user rate.
 
-quota 거부는 job을 만든 후 실패시키기보다 admission에서 처리한다. 실제 소비량은 attempt profile에 기록한다.
+Reject at admission rather than creating a doomed job. Record actual consumption in the attempt profile.
 
-## 16. Privacy와 retention
+## 16. Privacy and retention
 
-기본 제안이며 제품 정책 승인 필요:
+Proposed defaults requiring product-policy approval:
 
-- failed/pending upload: 짧은 시간
-- source image: 완료 후 24시간 기본
-- intermediate mesh/voxel: 디버깅 목적의 단기 보존
-- final delivery: 더 긴 기간 또는 사용자 저장 여부
-- logs/events: prompt/content 없이 제한 기간
+- failed/pending upload: short period;
+- source image: default 24 hours after completion;
+- intermediate mesh/voxel: short debugging retention;
+- final delivery: longer or based on explicit user storage;
+- logs/events: limited period without prompts/content.
 
-삭제:
+Deletion:
 
-1. tombstone
-2. 실행 중 dependency 확인
-3. storage delete
-4. 결과 확인/retry
-5. metadata 최소 audit 보존
+1. Create tombstone.
+2. Check active dependencies.
+3. Delete storage objects.
+4. Confirm/retry.
+5. Preserve only minimal audit metadata.
 
-외부 provider로 보내는 이미지/prompt와 provider retention을 사용자에게 고지한다.
+Disclose any image/prompt sent to an external provider and provider retention before such an adapter can be enabled. The current local MVP keeps data local.
 
 ## 17. Observability
 
-공통 field:
+Common fields:
 
-- environment/service/version
-- request/job/attempt ID
-- owner는 pseudonymous ID
-- stage/version
-- model/provider/palette
-- duration/resource
-- error code/retryable
+- environment/service/version;
+- request/job/attempt ID;
+- pseudonymous owner ID;
+- stage/version;
+- model/provider/palette;
+- duration/resources;
+- error code/retryability.
 
-금지:
+Forbidden:
 
-- image binary
-- full prompt 기본 log
-- auth header/API key
-- signed URL query
-- absolute temp path
+- image binaries;
+- full prompts in default logs;
+- authorization headers/API keys;
+- signed-URL queries;
+- absolute temporary paths.
 
-metric/alert는 [13-operations-and-release.md](13-operations-and-release.md)를 따른다.
+Metrics and alerts follow [13-operations-and-release.md](13-operations-and-release.md).
 
-## 18. Backend 완료 조건
+## 18. Backend completion criteria
 
-- idempotent conversion 생성
-- owner scope/IDOR test
-- outbox/queue message 손실 복구
-- duplicate delivery에서 한 attempt만 lease
-- worker kill 후 stage recovery
-- cancel/complete race test
-- candidate는 gate 전 다운로드 불가
-- signed URL scope/expiry
-- retention end-to-end
-- secrets가 API/client/log에 없음
+Current local gates include image-first precedence, invalid-image fail-closed behavior, idempotent conversion submission, private local permissions, path containment, terminal job errors, and candidate-free failure handling.
+
+Production completion additionally requires:
+
+- owner-scope/IDOR tests;
+- outbox/queue message-loss recovery;
+- a single lease under duplicate delivery;
+- stage recovery after worker termination;
+- cancel/complete race tests;
+- candidate unavailable before gates;
+- signed-URL scope/expiry;
+- end-to-end retention;
+- no secrets in API/client/log output.

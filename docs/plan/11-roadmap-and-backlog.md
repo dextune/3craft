@@ -1,58 +1,60 @@
-# 구현 로드맵과 백로그
+# Implementation Roadmap and Backlog
 
-> 현재 milestone별 구현 상태와 concrete evidence는 [`../implementation-status.md`](../implementation-status.md)를 따른다. 이 문서는 남은 production roadmap까지 포함한다.
+> Current implementation status and concrete evidence are tracked in [`../implementation-status.md`](../implementation-status.md). This document also includes the remaining production roadmap.
 
-## 1. 계획 원칙
+## 1. Planning principles
 
-- 먼저 end-to-end 얇은 vertical slice를 만든다.
-- UI 완성보다 schematic round-trip을 먼저 증명한다.
-- 실제 reconstruction model을 기다리지 않고 fixture/fake adapter로 병렬 개발한다.
-- 불확실성이 큰 model, Minecraft format, viewer 성능을 초기에 spike한다.
-- 각 milestone은 test evidence와 gate가 있어야 완료된다.
-- 추정은 person-day 범위이며 일정 약속이 아니다.
+- Build a thin end-to-end vertical slice first.
+- Prove schematic round-trip before polishing the UI.
+- Develop in parallel with fixtures/fake adapters instead of waiting for a real reconstruction model.
+- Spike the highest-uncertainty areas—models, Minecraft formats, and viewer performance—early.
+- Every milestone requires test evidence and gates before completion.
+- Estimates are person-day ranges, not schedule commitments.
 
-가정:
+Original production-team assumptions:
 
-- full-stack/graphics 1명
-- ML/geometry 1명
-- infra/QA part-time 지원
-- 2명이 병렬 작업할 때 MVP 7~11주 예상
-- 실제 provider/license/VRAM 결과에 따라 변동
+- one full-stack/graphics engineer;
+- one ML/geometry engineer;
+- part-time infrastructure/QA support;
+- estimated 7–11 weeks for two people working in parallel;
+- subject to actual provider, license, and VRAM findings.
 
-## 2. M0: Bootstrap과 결정 관문
+The current repository demonstrates a smaller, honest local MVP and does not imply completion of every production milestone below.
 
-예상: 3~5 person-days
+## 2. M0: Bootstrap and decision gates
 
-### 작업
+Estimate: 3–5 person-days
 
-- `BOOT-001`: monorepo/디렉터리 skeleton
-- `BOOT-002`: Node/Python runtime pin
-- `BOOT-003`: exact dependencies와 lockfile
+### Work
+
+- `BOOT-001`: monorepo/directory skeleton
+- `BOOT-002`: pin Node/Python runtimes
+- `BOOT-003`: exact dependencies and lockfiles
 - `BOOT-004`: lint/type/test/build scripts
-- `BOOT-005`: local Postgres/Redis/S3-compatible 환경
-- `BOOT-006`: contract package와 schema CI
-- `BOOT-007`: MIT attribution과 third-party inventory
+- `BOOT-005`: local Postgres/Redis/S3-compatible environment for the production target
+- `BOOT-006`: contract package and schema CI
+- `BOOT-007`: MIT attribution and third-party inventory
 - `DEC-001`: target Minecraft/WorldEdit/DataVersion
 - `DEC-002`: API framework/queue implementation
-- `DEC-003`: anonymous/auth alpha 정책
-- `DEC-004`: source/artifact retention 기본값
+- `DEC-003`: anonymous/authenticated alpha policy
+- `DEC-004`: source/artifact retention defaults
 
-### 완료 조건
+### Completion criteria
 
-- clean checkout에서 install/test/build
-- local services health
-- web→API hello contract
-- Python/TS schema fixture parity
-- [12-adrs-and-risks.md](12-adrs-and-risks.md)의 핵심 ADR Accepted
+- install/test/build from a clean checkout;
+- local service health;
+- Web → API hello contract;
+- Python/TypeScript schema-fixture parity;
+- core ADRs in [12-adrs-and-risks.md](12-adrs-and-risks.md) Accepted.
 
 ## 3. M1: Deterministic vertical slice
 
-예상: 6~9 person-days
+Estimate: 6–9 person-days
 
-목표:
+Goal:
 
 ```text
-fixture PNG → provenance/sense → relief mesh → 32 voxel → stone/safe palette → `.schem` → parser → viewer
+fixture PNG → provenance/sense → relief → 32 voxels → stone/safe palette → `.schem` → parser → viewer
 ```
 
 ### Pipeline
@@ -62,7 +64,7 @@ fixture PNG → provenance/sense → relief mesh → 32 voxel → stone/safe pal
 - `REF-003`: PNG/JPEG/WebP decode/normalize
 - `REF-004`: alpha/heuristic matte
 - `REF-005`: minimal SensePack
-- `REL-001`: depth/height relief mesh
+- `REL-001`: deterministic depth/height relief
 - `MESH-001`: canonical coordinates/primitive validation
 - `VOX-001`: surface occupancy
 - `PAL-001`: minimal curated palette
@@ -73,23 +75,27 @@ fixture PNG → provenance/sense → relief mesh → 32 voxel → stone/safe pal
 
 - `API-001`: local direct asset adapter
 - `API-002`: fixture conversion command/job skeleton
-- `VIEW-001`: viewer runtime/instanced block
+- `VIEW-001`: viewer runtime/instanced blocks
 - `VIEW-002`: binary/JSON debug preview
 
-### 완료 조건
+### Completion criteria
 
-- one command/test로 deterministic slice 실행
-- one block/asymmetric axis fixture round-trip
-- browser에서 fixture 표시
-- 동일 input semantic hash
-- 외부 AI/GPU 불필요
+- Run the deterministic slice with one command/test.
+- Round-trip one-block and asymmetric-axis fixtures.
+- Display fixtures in the browser.
+- Produce the same semantic hash for the same input.
+- Require no external AI or GPU.
 
-## 4. M2: Production intake와 sufficiency
+The current local MVP substantially implements this slice using direct 2.5D voxel relief rather than a general relief mesh intermediate.
 
-예상: 6~9 person-days
+## 4. M2: Production intake and sufficiency
 
+Estimate: 6–9 person-days
+
+- `SRC-001`: unified image-first resolver; supplied bytes override prompt
+- `SRC-002`: invalid supplied bytes fail without generated fallback
 - `ASSET-001`: upload session/signed upload
-- `ASSET-002`: server signature/decode/pixel limit
+- `ASSET-002`: server signature/decode/pixel limits
 - `ASSET-003`: canonical re-encode/EXIF/color
 - `ASSET-004`: private storage/owner
 - `SENSE-001`: segmentation adapter
@@ -97,301 +103,314 @@ fixture PNG → provenance/sense → relief mesh → 32 voxel → stone/safe pal
 - `SENSE-003`: transform chain/reverse mapping
 - `SUF-001`: route-aware issue policy
 - `SUF-002`: pass/conditional/reject action
-- `SUF-003`: user message/remedy
-- `GEN-001`: image provider port/null adapter
+- `SUF-003`: user messages/remedies
+- `GEN-001`: image-provider port/null adapter
 - `GEN-002`: generated provenance
-- `SEC-001`: malformed/adversarial upload fixture
+- `SEC-001`: malformed/adversarial upload fixtures
 
-완료 조건:
+Completion criteria:
 
-- upload/generated asset가 같은 contract
-- generated를 observed로 표시할 수 없음
-- blocker가 production queue 생성 차단
-- original/canonical/derived lineage
-- UI matte/sufficiency review
+- Upload and generated assets use the same downstream contract.
+- Supplied images always take precedence.
+- Invalid supplied images never invoke generation.
+- Generated assets cannot be marked observed.
+- Blockers prevent production queue creation.
+- Original/canonical/derived lineage exists.
+- UI provides matte/sufficiency review.
 
-## 5. M3: Reconstruction model 선정
+The local MVP implements source precedence, bounded decode/canonicalization, heuristic SensePack, provenance, and fail-closed relief sufficiency. Signed uploads, owner isolation, and advanced review remain production work.
 
-예상: 8~13 person-days
+## 5. M3: Reconstruction-model selection
 
-### 조사/spike
+Estimate: 8–13 person-days
 
-- `ML-001`: 후보 license/data policy
-- `ML-002`: common adapter/capability
+### Research/spike
+
+- `ML-001`: candidate licenses/data policies
+- `ML-002`: common adapter/capabilities
 - `ML-003`: candidate A
 - `ML-004`: candidate B
-- `ML-005`: 필요 시 hosted candidate
-- `ML-006`: 24개 corpus benchmark
-- `ML-007`: VRAM/latency/cost/failure
+- `ML-005`: hosted candidate if needed
+- `ML-006`: 24-input corpus benchmark
+- `ML-007`: VRAM/latency/cost/failure measurements
 - `ML-008`: blind quality evaluation
 - `ML-009`: primary/fallback ADR
 
 ### Mesh
 
-- `MESH-002`: raw ingest sandbox
+- `MESH-002`: raw-intake sandbox
 - `MESH-003`: finite/degenerate/component report
-- `MESH-004`: normal/hole/repair
-- `MESH-005`: coordinate/ground normalize
+- `MESH-004`: normals/holes/repair
+- `MESH-005`: coordinate/ground normalization
 - `MESH-006`: texture/color handoff
 - `MESH-007`: simplification benchmark
 
-완료 조건:
+Completion criteria:
 
-- hard license gate 통과
-- selected model/profile version 고정
-- invalid output이 downstream 차단
-- raw/repaired artifact와 report
-- primary/fallback/relief 정책
+- Pass hard license gates.
+- Pin selected model/profile versions.
+- Block invalid output downstream.
+- Produce raw/repaired artifacts and reports.
+- Define primary/fallback/relief policy.
 
-## 6. M4: Voxel, palette와 export core
+None of this milestone is claimed by the current local MVP.
 
-예상: 10~15 person-days
+## 6. M4: Voxel, palette, and export core
+
+Estimate: 10–15 person-days
 
 - `VOX-002`: solid occupancy
 - `VOX-003`: hollow/shell
-- `VOX-004`: component/morphology/thin feature
+- `VOX-004`: components/morphology/thin features
 - `VOX-005`: deterministic semantic hash
-- `COL-001`: UV/vertex/material color sample
-- `PAL-002`: safe-basic versioned data
+- `COL-001`: UV/vertex/material color sampling
+- `PAL-002`: versioned safe-basic data
 - `PAL-003`: target block validator
 - `PAL-004`: perceptual mapper
 - `PAL-005`: regularization/dithering
 - `BOM-001`: JSON/CSV
 - `CODEC-001`: production voxel binary/RLE
-- `CODEC-002`: TS decoder golden
-- `EXP-003`: full Sponge v3 adapter
+- `CODEC-002`: TypeScript decoder golden
+- `EXP-003`: complete Sponge v3 adapter
 - `EXP-004`: BOM/coordinate semantic validation
-- `EXP-005`: delivery bundle/leak gate
+- `EXP-005`: delivery-bundle/leak gate
 - `EXP-006`: actual WorldEdit smoke matrix
 
-완료 조건:
+Completion criteria:
 
-- 16/32/64 surface/hollow/solid fixture
-- safe palette target validation
-- Python/TS codec parity
-- all export gates
-- 실제 WorldEdit import
+- 16/32/64 surface/hollow/solid fixtures;
+- target-validated safe palette;
+- Python/TypeScript codec parity;
+- all export gates;
+- actual WorldEdit import.
 
-## 7. M5: Durable jobs와 backend
+The local MVP implements deterministic 16/32/64 relief modes, curated palette, BOM JSON, Sponge v3 writing, built-in semantic validation, and independent `nbtlib` parsing. Production binary/CSV, broader palette validation, and actual WorldEdit smoke remain incomplete.
 
-예상: 8~12 person-days
+## 7. M5: Durable jobs and backend
 
-- `DB-001`: owner/assets/reference/jobs/attempts/artifacts/events
-- `DB-002`: migration/test fixtures
+Estimate: 8–12 person-days
+
+- `DB-001`: owners/assets/references/jobs/attempts/artifacts/events
+- `DB-002`: migrations/test fixtures
 - `JOB-001`: state machine
 - `JOB-002`: idempotency/request hash
-- `JOB-003`: outbox/queue publish
-- `JOB-004`: lease/heartbeat/fencing
-- `JOB-005`: stage manifest/reuse
-- `JOB-006`: retry/backoff/dead letter
-- `JOB-007`: cancellation/race
-- `API-003`: job/SSE/polling
-- `API-004`: artifact download authorization
-- `STORE-001`: candidate/validated/published
-- `STORE-002`: retention/delete
+- `JOB-003`: outbox/queue publication
+- `JOB-004`: leases/heartbeats/fencing
+- `JOB-005`: stage manifests/reuse
+- `JOB-006`: retries/backoff/dead-letter
+- `JOB-007`: cancellation/races
+- `API-003`: jobs/SSE/polling
+- `API-004`: artifact-download authorization
+- `STORE-001`: candidate/validated/published states
+- `STORE-002`: retention/deletion
 - `OBS-001`: logs/metrics/traces
 
-완료 조건:
+Completion criteria:
 
-- duplicate queue에서 single execution/publish
-- worker kill recovery
-- cancel/complete race
-- owner scope
-- candidate download 불가
-- retention test
+- single execution/publication after duplicate queue delivery;
+- worker-termination recovery;
+- cancel/complete race handling;
+- owner scoping;
+- candidates cannot be downloaded;
+- retention tests.
 
-## 8. M6: Product UI와 viewer
+The current process-local manager provides an asynchronous API shape, idempotency, monotonic progress, bounded workers, terminal errors, and completed-only downloads. It is not durable across process restarts.
 
-예상: 8~12 person-days
+## 8. M6: Product UI and viewer
 
-- `WEB-001`: app shell/routes/design token
-- `WEB-002`: upload/generate source
-- `WEB-003`: mask/sufficiency
+Estimate: 8–12 person-days
+
+- `WEB-001`: application shell/routes/design tokens
+- `WEB-002`: unified image-first source form
+- `WEB-003`: mask/sufficiency review
 - `WEB-004`: settings/validation
-- `WEB-005`: job progress/SSE/poll
-- `WEB-006`: error/retry/cancel
+- `WEB-005`: job progress/SSE/polling
+- `WEB-006`: errors/retry/cancel
 - `WEB-007`: result/BOM/download
 - `VIEW-003`: production binary/Web Worker
 - `VIEW-004`: palette instancing
 - `VIEW-005`: camera/grid/orientation
 - `VIEW-006`: layer clipping/selection
 - `VIEW-007`: canonical capture
-- `VIEW-008`: dispose/leak probe
+- `VIEW-008`: disposal/leak probe
 - `A11Y-001`: keyboard/text alternative
 
-완료 조건:
+Completion criteria:
 
-- upload와 generate E2E
-- refresh/reconnect
-- 64축 performance
-- repeated dispose
-- keyboard core flow
-- WebGL fallback
+- image-first and generated-fallback E2E;
+- refresh/reconnect in the production architecture;
+- 64-axis performance;
+- repeated disposal;
+- keyboard core flow;
+- WebGL fallback.
 
-## 9. M7: Security, operations와 staging
+The local MVP has a unified English source form, settings, polling, lazy instanced viewer, layer control, BOM, and downloads. Full routing, persistence, browser E2E matrix, and accessibility audit remain backlog.
 
-예상: 6~10 person-days
+## 9. M7: Security, operations, and staging
 
-- `SEC-002`: auth/session/CSRF/CORS
+Estimate: 6–10 person-days
+
+- `SEC-002`: authentication/session/CSRF/CORS
 - `SEC-003`: IDOR/owner integration
 - `SEC-004`: rate/quota/admission
-- `SEC-005`: worker sandbox/egress/resource
-- `SEC-006`: secret/dependency/model scan
+- `SEC-005`: worker sandbox/egress/resources
+- `SEC-006`: secret/dependency/model scanning
 - `OPS-001`: production containers
 - `OPS-002`: staging topology
-- `OPS-003`: dashboard/alerts
+- `OPS-003`: dashboards/alerts
 - `OPS-004`: backup/restore
 - `OPS-005`: provider circuit breaker
 - `OPS-006`: cost telemetry
 - `OPS-007`: release/rollback rehearsal
 
-완료 조건:
+Completion criteria:
 
-- [13-operations-and-release.md](13-operations-and-release.md) smoke
-- security critical 0
-- alerts 실제 test
-- restore와 rollback evidence
-- quota/cost protection
+- [13-operations-and-release.md](13-operations-and-release.md) smoke;
+- zero critical security defects;
+- alerts actually tested;
+- restore and rollback evidence;
+- quota/cost protection.
 
 ## 10. M8: Beta hardening
 
-예상: 7~12 person-days
+Estimate: 7–12 person-days
 
-- `QA-001`: full fixture/golden regression
+- `QA-001`: complete fixture/golden regression
 - `QA-002`: reconstruction benchmark rerun
 - `QA-003`: browser compatibility
 - `QA-004`: Minecraft/WorldEdit matrix
 - `QA-005`: load/soak
-- `QA-006`: provider outage/OOM/storage incident drill
-- `QA-007`: UX copy/known limitation
+- `QA-006`: provider outage/OOM/storage incident drills
+- `QA-007`: UX copy/known limitations
 - `QA-008`: privacy/retention UI
 - `QA-009`: release candidate
 - `QA-010`: canary/rollback
 
-완료 조건은 [10-testing-and-quality-gates.md](10-testing-and-quality-gates.md)의 MVP release 조건 전체다.
+Completion requires every MVP release condition in [10-testing-and-quality-gates.md](10-testing-and-quality-gates.md).
 
-## 11. 병렬화
+## 11. Parallelization
 
-### Track A: Contract/Backend
+### Track A: Contracts/backend
 
-M0 → M1 contract → asset/job/storage → operations
+M0 → M1 contracts → assets/jobs/storage → operations
 
 ### Track B: Geometry/ML
 
-fixture → relief → model benchmark → mesh → voxel/palette/export
+fixtures → relief → model benchmark → mesh → voxel/palette/export
 
-### Track C: Web/Viewer
+### Track C: Web/viewer
 
-gpthreejs viewer pattern 분석 → fixture viewer → create/job UI → production viewer
+gpthreejs viewer-pattern analysis → fixture viewer → create/job UI → production viewer
 
-동기화 지점:
+Synchronization points:
 
-- M1 VoxelModel/preview contract
-- M2 ReferenceSet/SufficiencyReport
-- M3 ReconstructionResult/MeshMetadata
-- M4 DeliveryManifest
-- M5 JobEvent/API
+- M1 VoxelModel/preview contract;
+- M2 ReferenceSet/SufficiencyReport;
+- M3 ReconstructionResult/MeshMetadata;
+- M4 DeliveryManifest;
+- M5 JobEvent/API.
 
-contract fixture가 merge되기 전 양쪽에서 임시 shape를 만들지 않는다.
+Do not create temporary incompatible shapes on both sides before contract fixtures merge.
 
 ## 12. Critical path
 
 ```text
-Target schematic 결정
+Choose target schematic
 → primitive export round-trip
-→ VoxelModel/axis 고정
-→ reconstruction adapter/mesh normalize
+→ fix VoxelModel/axes
+→ reconstruction adapter/mesh normalization
 → color/palette
-→ durable job
+→ durable jobs
 → product E2E
 → staging/compatibility
 ```
 
-Minecraft export를 마지막에 미루면 coordinate/palette 설계를 다시 해야 한다. M1에 최소 exporter를 넣는 이유다.
+Deferring Minecraft export until the end would force coordinate and palette redesign. This is why M1 includes a minimal exporter.
 
 ## 13. MVP P0/P1/P2 backlog
 
 ### P0
 
-- source/upload/generated provenance
-- sufficiency fail-closed
-- relief + primary reconstruction
-- 16/32/64
-- surface/hollow/solid
-- safe palette
-- viewer/BOM
-- Java `.schem` round-trip
-- private storage/job recovery
-- security/release gate
+- source/upload/generated provenance;
+- image-first precedence and fail-closed invalid-image handling;
+- fail-closed sufficiency;
+- relief plus primary reconstruction in the production target;
+- 16/32/64;
+- surface/hollow/solid;
+- safe palette;
+- viewer/BOM;
+- Java `.schem` round-trip;
+- private storage/job recovery;
+- security/release gates.
 
 ### P1
 
-- generated multi-view
-- custom mask editor
-- color-rich/natural/survival profiles
-- advanced layer viewer
-- GLB/imported mesh
-- result library/auth
-- `.litematic`
+- generated multi-view;
+- custom mask editor;
+- color-rich/natural/survival profiles;
+- advanced layer viewer;
+- GLB/imported mesh;
+- result library/authentication;
+- `.litematic`.
 
 ### P2
 
-- Bedrock `.mcstructure`
-- custom/mod palette
-- build order/instructions
-- block replacement editor
-- public gallery/share
-- batch/public API
-- direct server/world integration
+- Bedrock `.mcstructure`;
+- custom/mod palette;
+- build order/instructions;
+- block-replacement editor;
+- public gallery/sharing;
+- batch/public API;
+- direct server/world integration.
 
 ## 14. Definition of Ready
 
-- 요구사항/위험/owner
-- 입력·출력 계약
-- dependency와 선행 task
-- test와 acceptance
-- security/privacy/cost 영향
-- feature flag/rollback 필요 여부
-- fixture 준비
+- requirement, risk, and owner;
+- input/output contract;
+- dependencies and prerequisites;
+- tests and acceptance;
+- security/privacy/cost effect;
+- feature-flag/rollback need;
+- fixtures ready.
 
 ## 15. Definition of Done
 
-- code review
-- unit/contract/integration test
-- lint/type/build
-- failure/cancel/loading 처리
-- telemetry
-- secret/user content 검토
-- docs/schema 갱신
-- migration/compatibility
-- acceptance evidence
-- rollback 또는 safe disable
+- code review;
+- unit/contract/integration tests;
+- lint/type/build;
+- failure/cancel/loading handling;
+- telemetry;
+- secret/user-content review;
+- documentation/schema updates;
+- migration/compatibility;
+- acceptance evidence;
+- rollback or safe disable.
 
-## 16. 첫 2주 실행안
+## 16. Initial two-week execution plan
 
-### 1~2일
+### Days 1–2
 
-- M0 skeleton/runtime/dependency pin
-- target `.schem`/DataVersion 결정
-- contract schema와 CI
+- M0 skeleton/runtime/dependency pins;
+- choose target `.schem`/DataVersion;
+- contract schema and CI.
 
-### 3~5일
+### Days 3–5
 
-- canonical hash/ReferenceSet
-- primitive mesh/VoxelModel
-- one-block/asymmetric schematic round-trip
+- canonical hash/ReferenceSet;
+- primitive mesh/VoxelModel;
+- one-block/asymmetric schematic round-trip.
 
-### 6~7일
+### Days 6–7
 
-- relief mesh
-- 32축 surface voxel
-- safe palette subset/BOM
+- relief mesh;
+- 32-axis surface voxels;
+- safe-palette subset/BOM.
 
-### 8~10일
+### Days 8–10
 
-- fixture job/API
-- React page + instanced viewer
-- browser smoke
-- first end-to-end demo
+- fixture job/API;
+- React page + instanced viewer;
+- browser smoke;
+- first end-to-end demo.
 
-2주 목표는 화려한 UI가 아니라 검증된 schematic과 재현 가능한 vertical slice다.
+The two-week objective is a validated schematic and reproducible vertical slice, not a polished UI.

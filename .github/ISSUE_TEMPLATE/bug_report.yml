@@ -1,5 +1,5 @@
 name: Bug report
-description: 재현 가능한 3Craft 결함을 보고합니다.
+description: Report a reproducible 3Craft defect.
 title: "[Bug] "
 labels:
   - bug
@@ -7,18 +7,18 @@ body:
   - type: markdown
     attributes:
       value: |
-        보안 취약점은 이 양식을 사용하지 말고 SECURITY.md의 private reporting 절차를 따라주세요.
+        Do not use this form for security vulnerabilities. Follow the private reporting procedure in SECURITY.md.
   - type: textarea
     id: summary
     attributes:
-      label: 문제 요약
-      description: 무엇이 잘못되었는지 간결하게 설명해 주세요.
+      label: Problem summary
+      description: Briefly explain what went wrong.
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: 재현 단계
+      label: Reproduction steps
       placeholder: |
         1. ...
         2. ...
@@ -28,27 +28,27 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: 기대 동작
+      label: Expected behavior
     validations:
       required: true
   - type: textarea
     id: actual
     attributes:
-      label: 실제 동작과 오류
-      description: 개인 이미지, secret, absolute home path를 제거한 log만 첨부해 주세요.
+      label: Actual behavior and errors
+      description: Attach only logs from which private images, secrets, and absolute home paths have been removed.
     validations:
       required: true
   - type: input
     id: environment
     attributes:
-      label: 환경
+      label: Environment
       placeholder: "Ubuntu 24.04, Python 3.12.3, Node 24, browser/version"
     validations:
       required: true
   - type: dropdown
     id: area
     attributes:
-      label: 관련 영역
+      label: Affected area
       options:
         - Image intake / sufficiency
         - Relief / voxel / palette
@@ -62,9 +62,9 @@ body:
   - type: checkboxes
     id: checks
     attributes:
-      label: 확인
+      label: Confirmation
       options:
-        - label: 최신 default branch에서 재현했습니다.
+        - label: I reproduced this on the latest default branch.
           required: true
-        - label: 민감정보와 개인 파일을 제거했습니다.
+        - label: I removed sensitive information and private files.
           required: true

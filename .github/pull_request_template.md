@@ -1,39 +1,40 @@
 # Pull request
 
-## 변경 요약
+## Summary
 
-<!-- 무엇을 왜 변경했는지 설명해 주세요. -->
+<!-- Explain what changed and why. -->
 
-## 관련 Issue
+## Related issue
 
-<!-- 예: Closes #123 -->
+<!-- Example: Closes #123 -->
 
-## 검증
+## Validation
 
 - [ ] `.venv/bin/python -m pytest -q`
 - [ ] `npm --prefix apps/web run build`
-- [ ] 변경에 필요한 targeted smoke/independent parser 검증
+- [ ] Targeted smoke test or independent parser validation required by this change
 
-실행한 명령과 결과:
+Commands and results:
 
 ```text
 
 ```
 
-## 계약 및 위험 검토
+## Contract and risk review
 
-- [ ] provenance/evidence class 불변조건을 유지합니다.
-- [ ] fail-closed delivery와 private artifact 정책을 유지합니다.
-- [ ] user content, secret 또는 local runtime artifact를 포함하지 않습니다.
-- [ ] dependency/provider 추가 시 버전, license, data egress와 cost를 검토했습니다.
-- [ ] Three.js resource 또는 async polling을 추가했다면 cleanup을 검증했습니다.
+- [ ] Preserves provenance and evidence-class invariants.
+- [ ] Preserves image-first precedence and fail-closed handling of invalid supplied images.
+- [ ] Preserves fail-closed delivery and private-artifact policies.
+- [ ] Contains no user content, secrets, or local runtime artifacts.
+- [ ] Reviews version, license, data egress, and cost for any new dependency or provider.
+- [ ] Verifies cleanup when adding Three.js resources or asynchronous polling.
 
-## 문서와 호환성
+## Documentation and compatibility
 
-- [ ] 사용자 동작이나 공개 계약 변경에 맞춰 문서를 갱신했습니다.
-- [ ] Java 1.20.4/DataVersion 3700/Sponge v3 호환성 영향을 설명했습니다.
-- [ ] 알려진 한계와 후속 작업을 기록했습니다.
+- [ ] Updates documentation for any changed user behavior or public contract.
+- [ ] Describes effects on Java 1.20.4/DataVersion 3700/Sponge v3 compatibility.
+- [ ] Records known limitations and follow-up work.
 
-## 스크린샷 또는 artifact 정보
+## Screenshots or artifact information
 
-<!-- 필요할 때만 첨부하고 개인 이미지나 private runtime artifact는 제거하세요. -->
+<!-- Include only when needed, and remove private images and runtime artifacts. -->

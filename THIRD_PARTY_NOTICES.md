@@ -1,6 +1,6 @@
 # Third-party notices
 
-3Craft 자체 코드는 [MIT License](LICENSE)로 배포됩니다. 이 문서는 직접 사용하는 주요 dependency와 설계 참고 자료를 알리기 위한 요약이며, 각 package가 배포하는 license 원문과 lockfile이 최종 기준입니다. Transitive dependency는 `apps/web/package-lock.json`과 설치된 Python distribution metadata를 확인하세요.
+3Craft's own code is distributed under the [MIT License](LICENSE). This document summarizes the principal direct dependencies and design references; the license texts distributed by each package and the lockfiles remain authoritative. For transitive dependencies, consult `apps/web/package-lock.json` and the installed Python distribution metadata.
 
 ## Runtime dependencies
 
@@ -29,6 +29,6 @@
 
 ## Architectural reference
 
-The planning phase studied [dextune/gpthreejs](https://github.com/dextune/gpthreejs) 0.2.0 (MIT) as an architectural reference. 3Craft adapts evidence classification, canonical hashing, sufficiency gating, fail-closed delivery and Three.js disposal patterns. It does not reuse the character blueprint, procedural geometry emitter or `createXxxForm.ts` output model. See [`docs/plan/01-gpthreejs-analysis.md`](docs/plan/01-gpthreejs-analysis.md) for the detailed analysis.
+The planning phase studied [dextune/gpthreejs](https://github.com/dextune/gpthreejs) 0.2.0 (MIT) as an architectural reference. 3Craft adapts evidence classification, canonical hashing, sufficiency gating, fail-closed delivery, and Three.js disposal patterns. It does not reuse the character blueprint, procedural geometry emitter, or `createXxxForm.ts` output model. See [`docs/plan/01-gpthreejs-analysis.md`](docs/plan/01-gpthreejs-analysis.md) for the detailed analysis.
 
 Minecraft is a trademark of Microsoft Corporation. 3Craft is an independent project and is not affiliated with or endorsed by Mojang Studios or Microsoft.

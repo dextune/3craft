@@ -1,286 +1,314 @@
-# Architecture Decisions와 위험 등록부
+# Architecture Decisions and Risk Register
 
-## 1. ADR 상태
+## 1. ADR status
 
-- Proposed: 문서 기본값, 구현 전 승인 필요
-- Accepted: spike/evidence와 함께 채택
-- Deprecated: 새 사용 금지
-- Superseded: 다른 ADR로 대체
+- Proposed: documented default that requires approval before production adoption
+- Accepted: adopted with spike/test evidence
+- Deprecated: prohibited for new use
+- Superseded: replaced by another ADR
 
-Accepted로 변경할 때 날짜, owner, evidence link와 dependency version을 추가한다.
+When changing an ADR to Accepted, add date, owner, evidence links, and dependency versions. Several Proposed decisions below are already local-MVP implementation defaults but still require broader production evidence described in their review conditions.
 
-## 2. ADR-001: Block sculpture를 제품 결과로 사용
+## 2. ADR-001: Use a block sculpture as the product result
 
-- 상태: Proposed
-- 결정: 월드에 배치 가능한 voxel/block structure를 만든다.
-- 대안: resource-pack item/entity, 일반 GLB, procedural Three.js source
-- 이유: 이미지→voxel→schematic 가치가 명확하고 Minecraft 사용 흐름과 직접 연결된다.
-- 결과: palette, BOM, placement/export가 핵심 도메인이다.
-- 재검토: 사용자 조사에서 Blockbench/resource-pack 수요가 우세할 때.
+- Status: Proposed
+- Decision: Create a voxel/block structure placeable in a world.
+- Alternatives: resource-pack item/entity, generic GLB, procedural Three.js source
+- Rationale: The image → voxel → schematic value is clear and directly connected to Minecraft workflows.
+- Consequence: Palette, BOM, placement, and export become core domains.
+- Revisit: If user research strongly favors Blockbench/resource-pack output.
 
-## 3. ADR-002: Java Edition Sponge `.schem` 우선
+## 3. ADR-002: Java Edition Sponge `.schem` first
 
-- 상태: Proposed
-- 결정: 첫 delivery는 Java Edition, Sponge v3 계열 `.schem`이다.
-- 대안: `.litematic`, Bedrock `.mcstructure`, command function
-- 이유: WorldEdit 기반 검증과 배치 흐름이 성숙하다.
-- 비용: DataVersion/block state/WorldEdit compatibility 관리.
-- 재검토: target 사용자의 Bedrock 비율이 우세하거나 parser 호환성 문제가 치명적일 때.
+- Status: Proposed for production support; implemented for the local MVP
+- Decision: The first delivery format is Java Edition Sponge v3 `.schem`.
+- Alternatives: `.litematic`, Bedrock `.mcstructure`, command functions
+- Rationale: WorldEdit-based validation and placement workflows are mature.
+- Cost: Manage DataVersion, block states, and WorldEdit compatibility.
+- Revisit: If target users strongly favor Bedrock or parser compatibility becomes untenable.
 
-## 4. ADR-003: Image→Mesh→Voxel pipeline
+## 4. ADR-003: Image → mesh → voxel pipeline
 
-- 상태: Proposed
-- 결정: mesh를 AI와 Minecraft domain 사이 canonical intermediate로 사용한다.
-- 대안: direct image→voxel, procedural primitive blueprint, pure depth relief
-- 이유: provider 교체, geometry 검사, color transfer와 여러 export에 유리하다.
-- 결과: mesh repair와 coordinate 계약이 필요하다.
-- 예외: relief는 별도 deterministic route로 유지.
-- 재검토: direct voxel 모델이 license/품질/비용에서 명백히 우수할 때.
+- Status: Proposed
+- Decision: Use a mesh as the canonical intermediate between AI and the Minecraft domain.
+- Alternatives: direct image → voxel, procedural primitive blueprint, pure depth relief
+- Rationale: Supports provider replacement, geometry inspection, color transfer, and multiple exports.
+- Consequence: Requires mesh repair and coordinate contracts.
+- Exception: Keep relief as a separate deterministic route. The current local MVP uses this exception directly.
+- Revisit: If a direct voxel model is clearly superior in license, quality, and cost.
 
-## 5. ADR-004: Relief를 baseline/fallback으로 유지
+## 5. ADR-004: Keep relief as baseline/fallback
 
-- 상태: Proposed
-- 결정: 2.5D relief를 MVP의 first vertical slice와 사용자 선택 route로 제공한다.
-- 이유: GPU 없이 전체 시스템 검증, 정면 이미지에 적합, provider 장애 fallback.
-- 결과: 완전 3D로 오인하지 않도록 UI/manifest 표시.
-- 재검토: 제거하지 않고 지원 범위를 축소할 수 있음.
+- Status: Proposed for production; implemented as the current local route
+- Decision: Provide 2.5D relief as the first vertical slice and a user-selectable route.
+- Rationale: Validates the complete system without a GPU, suits front-view images, and can remain available during provider outages.
+- Consequence: UI and manifests must prevent users from mistaking it for complete 3D.
+- Revisit: Scope may shrink, but the deterministic baseline remains useful.
 
-## 6. ADR-005: React/Vite + imperative Three.js
+## 6. ADR-005: React/Vite plus imperative Three.js
 
-- 상태: Proposed
-- 결정: 제품 UI는 React, viewer runtime은 명시적 Three.js lifecycle로 구현한다.
-- 대안: vanilla Vite 전체, React Three Fiber, Babylon.js
-- 이유: gpthreejs renderer/resource 패턴을 활용하고 대량 instance ownership을 직접 제어한다.
-- 결과: React state와 scene state를 분리해야 한다.
-- 재검토: R3F spike가 성능·dispose·개발성 모두 우월함을 보일 때.
+- Status: Proposed for production; implemented in the local viewer
+- Decision: Build product UI in React and viewer runtime with an explicit Three.js lifecycle.
+- Alternatives: all-vanilla Vite, React Three Fiber, Babylon.js
+- Rationale: Adapts gpthreejs renderer/resource patterns and directly controls ownership of many instances.
+- Consequence: React state and scene state must remain separate.
+- Revisit: If an R3F spike is superior in performance, disposal, and developer experience.
 
-## 7. ADR-006: Python API와 Python Worker
+## 7. ADR-006: Python API and Python worker
 
-- 상태: Proposed
-- 결정: AI/geometry pipeline과 API를 Python ecosystem에 둔다.
-- 대안: TypeScript API + Python worker, 전부 TypeScript
-- 이유: gpthreejs Python 패턴, ML/mesh library와 contract 공유.
-- 비용: frontend와 타입 생성 필요, API와 GPU worker dependency 분리 필요.
-- 재검토: 기존 조직 platform 또는 gpthreejs 통합보다 TypeScript API 이점이 클 때.
+- Status: Proposed for production; implemented process-locally
+- Decision: Keep the AI/geometry pipeline and API in the Python ecosystem.
+- Alternatives: TypeScript API + Python worker, all TypeScript
+- Rationale: Matches gpthreejs Python patterns and ML/mesh libraries while sharing contracts.
+- Cost: Generate/synchronize frontend types and isolate API versus GPU-worker dependencies.
+- Revisit: If an organizational platform or TypeScript API offers greater benefit than integration.
 
-## 8. ADR-007: 비동기 durable job
+## 8. ADR-007: Asynchronous durable jobs
 
-- 상태: Proposed
-- 결정: conversion/image generation은 queue job이다.
-- 이유: 수십 초~분 단위, timeout/retry/cancel/progress/비용 관리.
-- 결과: Postgres state, Redis queue, outbox, worker lease 필요.
-- 재검토: 없음. local fixture adapter만 동기 실행 허용.
+- Status: Proposed; asynchronous shape implemented, durability not implemented
+- Decision: Conversion and production image generation are queued jobs.
+- Rationale: They can take seconds or minutes and need timeout, retry, cancel, progress, and cost controls.
+- Consequence: Production requires Postgres state, Redis queue, outbox, and worker leases.
+- Revisit: None. Only local fixture adapters may execute synchronously.
 
 ## 9. ADR-008: S3-compatible private artifact storage
 
-- 상태: Proposed
-- 결정: DB에는 metadata, binary는 private object storage.
-- 이유: 크기, lifecycle, signed URL, worker/API 분리.
-- 결과: owner authorization, orphan cleanup, checksum 필요.
-- 재검토: offline desktop-only 제품으로 방향 전환할 때.
+- Status: Proposed
+- Decision: Store metadata in the database and binaries in private object storage.
+- Rationale: Supports size, lifecycle, signed URLs, and API/worker separation.
+- Consequence: Requires owner authorization, orphan cleanup, and checksums.
+- Revisit: If the product becomes offline-desktop only.
 
-## 10. ADR-009: Evidence class와 immutable lineage
+The local MVP instead uses a private filesystem store with restrictive permissions and opaque validated IDs.
 
-- 상태: Proposed
-- 결정: gpthreejs의 observed/design-intent/design-hypothesis/inferred 구분과 SHA-256 provenance를 적응한다.
-- 이유: 생성 이미지와 hidden geometry의 신뢰 수준을 투명하게 관리.
-- 결과: manifest/schema/UI가 evidence class를 전달한다.
-- 재검토: 없음. 이름은 schema migration으로 바뀔 수 있다.
+## 10. ADR-009: Evidence classes and immutable lineage
+
+- Status: Proposed for production; core invariant implemented
+- Decision: Adapt gpthreejs `observed`, `design-intent`, `design-hypothesis`, and `inferred` classes with SHA-256 provenance.
+- Rationale: Transparently manages trust in generated images and hidden geometry.
+- Consequence: Manifests, schemas, and UI carry evidence classes.
+- Revisit: The names may change only through schema migration; the distinction remains.
 
 ## 11. ADR-010: Fail-closed delivery
 
-- 상태: Proposed
-- 결정: input/reconstruction/voxel/export hard gate가 모두 통과해야 artifact를 publish한다.
-- 대안: warning을 붙여 모든 결과 download
-- 이유: invalid schematic, 잘못된 block state, private leak 방지.
-- 결과: candidate와 published artifact state 분리.
-- 재검토: hard/soft gate 구분은 조정 가능하나 parse/authorization gate는 완화하지 않는다.
+- Status: Proposed for production; core gates implemented
+- Decision: Publish artifacts only after input, reconstruction, voxel, and export hard gates pass.
+- Alternative: Attach warnings and allow every result to download.
+- Rationale: Prevent invalid schematics, invalid block states, and private-data leakage.
+- Consequence: Separate candidate and published artifact states in production.
+- Revisit: Hard/soft classification can change, but parse and authorization gates cannot be weakened.
 
-## 12. ADR-011: Safe full-cube palette 우선
+## 12. ADR-011: Safe full-cube palette first
 
-- 상태: Proposed
-- 결정: 불투명 full cube, block entity/중력/액체 제외 palette를 default로 한다.
-- 이유: placement와 schematic 의미 안정성.
-- 결과: 색 표현 범위가 줄 수 있음.
-- 재검토: placement validator와 복합 block 지원 후 profile 확대.
+- Status: Proposed for production; `java-safe-v1` implemented
+- Decision: Default to opaque full cubes excluding block entities, gravity blocks, and liquids.
+- Rationale: Stable placement and schematic meaning.
+- Consequence: Reduced color range.
+- Revisit: Expand profiles after placement validation and compound-block support.
 
-## 13. ADR-012: Canonical semantic hash
+## 13. ADR-012: Canonical semantic hashes
 
-- 상태: Proposed
-- 결정: canonical JSON과 raw/semantic hash를 분리한다.
-- 이유: cache, stale report 방지, deterministic postprocess 검증.
-- 결과: hash field/volatile field 제외 규칙을 엄격히 유지.
-- 재검토: 새로운 serialization에서도 semantic contract는 유지.
+- Status: Proposed for production; implemented in core contracts
+- Decision: Separate canonical JSON, raw-byte hashes, and semantic hashes.
+- Rationale: Reliable caches, stale-report prevention, and deterministic post-processing checks.
+- Consequence: Strictly maintain exclusions for hash fields and volatile fields.
+- Revisit: Preserve the semantic contract under any new serialization.
 
-## 14. 미결정 질문
+## 14. ADR-013: Supplied image is authoritative
 
-| 질문 | 기본값 | 결정 시점 | 필요한 evidence |
+- Status: Accepted
+- Date: 2026-07-30
+- Owner: 3Craft core
+- Decision: Non-`None` supplied image bytes always select upload processing. Generate only when image bytes are absent.
+- Invariant: `None` means absent; `b""` means a supplied invalid image.
+- Provenance: upload=`observed`; generated fallback=`design-intent`.
+- Alternatives: prompt overrides attachment, automatic generation after upload failure, separate ambiguous UI tabs
+- Rationale: Preserves user intent, provenance, privacy, and fail-closed validation.
+- Consequence: A user must explicitly remove or replace an invalid supplied image before generation can run.
+- Evidence: `tests/test_pipeline.py`, `tests/test_api.py`, `tests/test_cli.py`, unified Web source form, `SKILL.md`
+- Revisit: Do not weaken precedence. New source kinds require an explicit versioned decision.
+
+## 15. Open questions
+
+| Question | Default | Decision point | Required evidence |
 |---|---|---|---|
-| API framework | Python ASGI 후보 | M0 | type/schema, 운영성, ecosystem |
-| queue library | Redis-backed 후보 | M0 | retry/lease/outbox/모니터링 |
-| target MC/DataVersion | 지원 버전 1개 | M0/M1 | parser/WorldEdit smoke |
-| primary reconstruction | 미정 | M3 | license+24 corpus benchmark |
-| segmentation provider | local/hosted adapter | M2 | mask quality/latency/cost |
-| auth | alpha anonymous session | M0 | 제품 배포 방식 |
-| source retention | 24h 제안 | M0/M7 | privacy/cost |
-| default fill | hollow 또는 surface | M4 | recognizability/block count |
-| color metric | perceptual 후보 | M4 | palette benchmark |
-| texture-derived palette | 보류 | M4 | license review |
-| R3F 사용 | imperative default | viewer spike | 64축/perf/dispose |
-| self-hosted GPU | 환경 의존 | M3/M7 | cost/latency/ops |
+| API framework | Python ASGI candidate | M0 | Types/schemas, operations, ecosystem |
+| Queue library | Redis-backed candidate | M0 | Retry/lease/outbox/monitoring |
+| Target MC/DataVersion | One supported version | M0/M1 | Parser/WorldEdit smoke |
+| Primary reconstruction | Undecided | M3 | License + 24-input benchmark |
+| Segmentation provider | Local/hosted adapter | M2 | Mask quality/latency/cost |
+| Authentication | Anonymous alpha session | M0 | Product deployment model |
+| Source retention | Proposed 24 h | M0/M7 | Privacy/cost |
+| Default fill | Hollow or surface | M4 | Recognizability/block count |
+| Color metric | Perceptual candidate | M4 | Palette benchmark |
+| Texture-derived palette | Deferred | M4 | License review |
+| R3F use | Imperative default | Viewer spike | 64-axis performance/disposal |
+| Self-hosted GPU | Environment-dependent | M3/M7 | Cost/latency/operations |
 
-## 15. 위험 평가
+The executable local target is currently fixed to Java 1.20.4, DataVersion 3700, Sponge v3, hollow default, and the imperative viewer; production support claims still require their stated evidence.
 
-- 확률: Low/Medium/High
-- 영향: Low/Medium/High/Critical
-- signal: 현실화 조기 지표
-- mitigation: 사전 완화
-- response: 발생 후 대응
+## 16. Risk assessment
 
-## 16. 위험 등록부
+- Probability: Low/Medium/High
+- Impact: Low/Medium/High/Critical
+- Signal: Early indication that the risk is becoming real
+- Mitigation: Preventive action
+- Response: Action after occurrence
 
-### RISK-001: Single-image hidden surface 부정확
+## 17. Risk register
 
-- 확률: High
-- 영향: High
-- signal: side/back blind score, 재변환/불만
-- mitigation: evidence 표시, input guide, relief, multi-view backlog
-- response: warning, route 변경, side view 요청
-- owner: Product/ML
+### RISK-001: Inaccurate hidden surfaces from one image
 
-### RISK-002: 얇은/투명/반사 물체 손실
+- Probability: High
+- Impact: High
+- Signal: side/back blind score, reconversion, complaints
+- Mitigation: evidence labels, input guide, relief, multi-view backlog
+- Response: warning, route change, request side view
+- Owner: Product/ML
 
-- 확률: High
-- 영향: High
-- signal: matte confidence, component 삭제, silhouette loss
-- mitigation: diagnostics, minimum thickness, challenge corpus
-- response: 64축/다른 image/수동 mask/unsupported 안내
-- owner: Vision/Geometry
+### RISK-002: Loss of thin, transparent, or reflective objects
 
-### RISK-003: Reconstruction model 라이선스 불가
+- Probability: High
+- Impact: High
+- Signal: matte confidence, component removal, silhouette loss
+- Mitigation: diagnostics, minimum thickness, challenge corpus
+- Response: 64-axis suggestion, different image, manual mask, unsupported notice
+- Owner: Vision/Geometry
 
-- 확률: Medium
-- 영향: Critical
-- signal: 비상업/weight/API data 제한
-- mitigation: hard license gate, 후보 복수
-- response: 후보 교체, relief만 제한 제공
-- owner: Tech/Product
+### RISK-003: Reconstruction-model license is unusable
 
-### RISK-004: GPU 비용·queue 지연
+- Probability: Medium
+- Impact: Critical
+- Signal: non-commercial terms or weight/API-data restrictions
+- Mitigation: hard license gate, multiple candidates
+- Response: replace candidate or limit service to relief
+- Owner: Technology/Product
 
-- 확률: Medium
-- 영향: Critical
-- signal: GPU seconds, oldest age, cancellation, cost/job
-- mitigation: 32 default, quota, benchmark, admission, cache
-- response: 64 제한, provider/모델 변경, capacity scale
-- owner: Platform
+### RISK-004: GPU cost or queue delay
+
+- Probability: Medium
+- Impact: Critical
+- Signal: GPU-seconds, oldest age, cancellation, cost/job
+- Mitigation: default 32, quotas, benchmark, admission control, cache
+- Response: restrict 64, change provider/model, scale capacity
+- Owner: Platform
 
 ### RISK-005: Invalid/non-manifold mesh
 
-- 확률: High
-- 영향: High
-- signal: repair failure, solid route failure
-- mitigation: raw validation, surface fallback, mesh corpus
-- response: downgrade with consent, relief, model 변경
-- owner: Geometry
+- Probability: High
+- Impact: High
+- Signal: repair failure, solid-route failure
+- Mitigation: raw validation, surface fallback, mesh corpus
+- Response: downgrade with consent, relief, model change
+- Owner: Geometry
 
-### RISK-006: Schematic 좌표/format 호환 오류
+### RISK-006: Schematic coordinate/format incompatibility
 
-- 확률: Medium
-- 영향: Critical
-- signal: parser/WorldEdit 실패, BOM mismatch
-- mitigation: M1 primitive export, independent parser, actual smoke
-- response: exporter rollback/disable, artifact unpublish
-- owner: Export
+- Probability: Medium
+- Impact: Critical
+- Signal: parser/WorldEdit failure, BOM mismatch
+- Mitigation: M1 primitive export, independent parser, actual smoke
+- Response: roll back/disable exporter, unpublish affected artifacts
+- Owner: Export
 
-### RISK-007: Minecraft palette 자산 라이선스
+### RISK-007: Minecraft palette-asset licensing
 
-- 확률: Medium
-- 영향: High
-- signal: texture 재배포/derived data 불명확
-- mitigation: curated values, source/license record, legal review
-- response: texture 없는 manual palette로 전환
-- owner: Product
+- Probability: Medium
+- Impact: High
+- Signal: unclear texture redistribution/derived-data rights
+- Mitigation: curated values, source/license records, legal review
+- Response: switch to a texture-free manual palette
+- Owner: Product
 
 ### RISK-008: Viewer memory/FPS
 
-- 확률: Medium
-- 영향: High
-- signal: 64축 frame p95, context loss, resource growth
-- mitigation: instancing, interior skip, worker decode, dispose gate
-- response: exposed-face/greedy mesh, resolution/device fallback
-- owner: Frontend
+- Probability: Medium
+- Impact: High
+- Signal: 64-axis frame p95, context loss, resource growth
+- Mitigation: instancing, interior skipping, worker decode, disposal gate
+- Response: exposed-face/greedy mesh, resolution/device fallback
+- Owner: Frontend
 
-### RISK-009: Queue 중복 실행/중복 비용
+### RISK-009: Duplicate queue execution/cost
 
-- 확률: Medium
-- 영향: High
-- signal: 같은 job 동시 attempt/provider call
-- mitigation: lease/fencing/idempotent stage/provider correlation
-- response: stale attempt 차단, 비용 audit, retry 조정
-- owner: Backend
+- Probability: Medium
+- Impact: High
+- Signal: simultaneous attempts/provider calls for one job
+- Mitigation: leases, fencing, idempotent stages, provider correlation
+- Response: stop stale attempt, audit cost, adjust retry
+- Owner: Backend
 
-### RISK-010: 사용자 asset 노출
+### RISK-010: User-asset exposure
 
-- 확률: Low
-- 영향: Critical
-- signal: IDOR/public bucket/signed URL leak
-- mitigation: private storage, owner scope, security test
-- response: access revoke, key rotation, incident/삭제/통지 정책
-- owner: Security
+- Probability: Low
+- Impact: Critical
+- Signal: IDOR, public bucket, leaked signed URL
+- Mitigation: private storage, owner scope, security tests
+- Response: revoke access, rotate keys, apply incident/deletion/notification policy
+- Owner: Security
 
-### RISK-011: Provider outage/data retention 변경
+### RISK-011: Provider outage or retention-policy change
 
-- 확률: Medium
-- 영향: High
-- signal: error/rate spike, policy notice
-- mitigation: adapter/null/fallback, circuit breaker, policy inventory
-- response: provider disable/교체, 기능별 상태 공지
-- owner: Platform
+- Probability: Medium
+- Impact: High
+- Signal: error/rate spike, policy notice
+- Mitigation: adapters, null mode, allowed fallback, circuit breaker, policy inventory
+- Response: disable/replace provider, capability-specific status notice
+- Owner: Platform
 
 ### RISK-012: Artifact/schema drift
 
-- 확률: Medium
-- 영향: High
-- signal: old job read failure, TS/Python mismatch
-- mitigation: schema source, generated types, previous fixture CI
-- response: compatibility reader/migration, rollout 중단
-- owner: Architecture
+- Probability: Medium
+- Impact: High
+- Signal: old-job read failure, TypeScript/Python mismatch
+- Mitigation: schema source, generated types, previous-fixture CI
+- Response: compatibility reader/migration, stop rollout
+- Owner: Architecture
 
-### RISK-013: gpthreejs code의 잘못된 직접 복사
+### RISK-013: Incorrect direct copying from gpthreejs
 
-- 확률: Medium
-- 영향: Medium
-- signal: character/THREE.Group 계약이 voxel core에 침투
-- mitigation: [01-gpthreejs-analysis.md](01-gpthreejs-analysis.md) 분류와 review
-- response: adapter boundary로 refactor, 불필요 코드 제거
-- owner: Tech Lead
+- Probability: Medium
+- Impact: Medium
+- Signal: character/`THREE.Group` contracts enter voxel core
+- Mitigation: classification and review in [01-gpthreejs-analysis.md](01-gpthreejs-analysis.md)
+- Response: refactor behind adapters and remove irrelevant code
+- Owner: Technology Lead
 
-### RISK-014: 자동 repair가 identity를 훼손
+### RISK-014: Automatic repair damages identity
 
-- 확률: Medium
-- 영향: High
-- signal: repair 전후 silhouette/volume 급변
-- mitigation: change threshold/raw 보존/canonical comparison
-- response: 덜 공격적 repair, surface route, ask
-- owner: Geometry
+- Probability: Medium
+- Impact: High
+- Signal: sharp silhouette/volume changes before versus after repair
+- Mitigation: change thresholds, raw preservation, canonical comparison
+- Response: less aggressive repair, surface route, ask
+- Owner: Geometry
 
 ### RISK-015: Scope creep
 
-- 확률: High
-- 영향: High
-- signal: Bedrock/mod/gallery/editor가 MVP critical path에 포함
-- mitigation: [02-product-requirements.md](02-product-requirements.md) 비범위와 P1/P2
-- response: backlog로 이동, vertical slice 우선
-- owner: Product
+- Probability: High
+- Impact: High
+- Signal: Bedrock/mod/gallery/editor work enters the MVP critical path
+- Mitigation: non-goals in [02-product-requirements.md](02-product-requirements.md) and P1/P2 backlog
+- Response: move to backlog and prioritize the vertical slice
+- Owner: Product
 
-## 17. Decision review cadence
+### RISK-016: Silent fallback replaces a supplied image
+
+- Probability: Low after ADR-013 controls
+- Impact: Critical
+- Signal: generated origin after a request containing file bytes; provider called after upload validation error
+- Mitigation: one resolver contract, explicit `None` semantics, provider spies, API/CLI/Web regression tests, skill instructions
+- Response: disable affected source path, preserve failing request evidence without user content, patch and add a regression fixture
+- Owner: Core/API
+
+## 18. Decision review cadence
 
 - M0: ADR-001/002/005/006/007/008
-- M1: axis, schema, exporter target, hash
+- M1: axes, schemas, exporter target, hashes
+- M2: ADR-013 and source/provenance policy
 - M3: primary model/provider
 - M4: default fill/palette/color
-- M7: auth/retention/deployment/cost
-- Beta: 성능 예산과 support matrix
+- M7: authentication/retention/deployment/cost
+- Beta: performance budgets and support matrix
 
-결정은 benchmark·test·운영 증거 없이 “익숙하다”는 이유만으로 Accepted로 바꾸지 않는다.
+Never mark a decision Accepted merely because it is familiar; require benchmark, test, and operational evidence.

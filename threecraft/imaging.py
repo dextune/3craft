@@ -45,29 +45,29 @@ def safe_display_name(file_name: str | None) -> str | None:
 
 def canonicalize_image(data: bytes, *, declared_content_type: str | None = None) -> CanonicalizedImage:
     if not data:
-        raise ThreeCraftError("FILE_EMPTY", "업로드한 파일이 비어 있습니다.")
+        raise ThreeCraftError("FILE_EMPTY", "The uploaded file is empty.")
     if len(data) > MAX_UPLOAD_BYTES:
-        raise ThreeCraftError("IMAGE_TOO_LARGE", "이미지 파일은 10MB 이하여야 합니다.", status_code=413)
+        raise ThreeCraftError("IMAGE_TOO_LARGE", "Image files must be 10 MB or smaller.", status_code=413)
 
     try:
         with Image.open(BytesIO(data)) as source:
             source_format = str(source.format or "").upper()
             if source_format not in _ALLOWED_FORMATS:
-                raise ThreeCraftError("FILE_UNSUPPORTED", "PNG, JPEG 또는 WebP 이미지만 지원합니다.")
+                raise ThreeCraftError("FILE_UNSUPPORTED", "Only PNG, JPEG, and WebP images are supported.")
             if getattr(source, "n_frames", 1) != 1:
-                raise ThreeCraftError("ANIMATED_IMAGE_UNSUPPORTED", "애니메이션 이미지는 지원하지 않습니다.")
+                raise ThreeCraftError("ANIMATED_IMAGE_UNSUPPORTED", "Animated images are not supported.")
             if source.width <= 0 or source.height <= 0 or source.width * source.height > MAX_PIXELS:
-                raise ThreeCraftError("IMAGE_DIMENSIONS_INVALID", "이미지 해상도가 허용 범위를 벗어났습니다.", status_code=413)
+                raise ThreeCraftError("IMAGE_DIMENSIONS_INVALID", "The image dimensions are outside the allowed range.", status_code=413)
             expected_type = _ALLOWED_FORMATS[source_format]
             if declared_content_type and declared_content_type not in {expected_type, "application/octet-stream"}:
-                raise ThreeCraftError("CONTENT_TYPE_MISMATCH", "파일 내용과 선언된 이미지 형식이 일치하지 않습니다.")
+                raise ThreeCraftError("CONTENT_TYPE_MISMATCH", "The file content does not match the declared image type.")
             source.load()
             oriented = ImageOps.exif_transpose(source)
             rgba = oriented.convert("RGBA")
     except ThreeCraftError:
         raise
     except (UnidentifiedImageError, OSError, ValueError) as exc:
-        raise ThreeCraftError("IMAGE_DECODE_FAILED", "이미지 파일을 읽을 수 없습니다.") from exc
+        raise ThreeCraftError("IMAGE_DECODE_FAILED", "The image file could not be decoded.") from exc
 
     output = BytesIO()
     rgba.save(output, format="PNG", optimize=False, compress_level=9)
@@ -191,4 +191,4 @@ def read_image_file(path: str | Path) -> bytes:
     try:
         return Path(path).read_bytes()
     except OSError as exc:
-        raise ThreeCraftError("FILE_MISSING", f"이미지 파일을 읽을 수 없습니다: {path}") from exc
+        raise ThreeCraftError("FILE_MISSING", f"The image file could not be read: {path}") from exc

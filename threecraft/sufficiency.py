@@ -13,7 +13,7 @@ def assess_sufficiency(sense: SensePack, *, route: str = "relief") -> Sufficienc
             Issue(
                 "RESOLUTION_TOO_LOW",
                 "blocker",
-                "이미지의 짧은 변이 128px보다 작습니다.",
+                "The image's shorter side is less than 128 px.",
                 ("upload-higher-resolution",),
                 {"width": sense.width, "height": sense.height},
             )
@@ -23,7 +23,7 @@ def assess_sufficiency(sense: SensePack, *, route: str = "relief") -> Sufficienc
             Issue(
                 "RESOLUTION_MARGINAL",
                 "warning",
-                "더 큰 이미지를 사용하면 윤곽이 안정적으로 보존됩니다.",
+                "A larger image will preserve the silhouette more reliably.",
                 ("upload-higher-resolution", "use-16-block-resolution"),
             )
         )
@@ -33,7 +33,7 @@ def assess_sufficiency(sense: SensePack, *, route: str = "relief") -> Sufficienc
             Issue(
                 "FOREGROUND_EMPTY",
                 "blocker",
-                "변환할 전경 물체를 찾지 못했습니다.",
+                "No foreground subject was found for conversion.",
                 ("upload-another-image", "use-transparent-background"),
             )
         )
@@ -42,7 +42,7 @@ def assess_sufficiency(sense: SensePack, *, route: str = "relief") -> Sufficienc
             Issue(
                 "SUBJECT_TOO_SMALL",
                 "blocker",
-                "물체가 이미지에서 너무 작습니다.",
+                "The subject is too small in the image.",
                 ("crop-around-subject", "upload-another-image"),
                 {"foregroundRatio": sense.foreground_ratio},
             )
@@ -53,7 +53,7 @@ def assess_sufficiency(sense: SensePack, *, route: str = "relief") -> Sufficienc
             Issue(
                 "BACKGROUND_NOT_SEPARATED",
                 "warning",
-                "배경과 물체가 충분히 분리되지 않았을 수 있습니다.",
+                "The background and subject may not be separated clearly enough.",
                 ("use-transparent-background", "upload-simpler-background"),
             )
         )
@@ -62,7 +62,7 @@ def assess_sufficiency(sense: SensePack, *, route: str = "relief") -> Sufficienc
             Issue(
                 "SUBJECT_TOUCHES_FRAME",
                 "warning",
-                "물체가 이미지 경계에 닿아 일부가 잘렸을 수 있습니다.",
+                "The subject touches the image boundary and may be cropped.",
                 ("add-padding", "upload-full-object"),
             )
         )
@@ -71,7 +71,7 @@ def assess_sufficiency(sense: SensePack, *, route: str = "relief") -> Sufficienc
             Issue(
                 "MULTIPLE_SUBJECTS",
                 "warning",
-                "분리된 전경 영역이 많아 단일 물체 결과가 불안정할 수 있습니다.",
+                "Multiple disconnected foreground regions may make a single-subject result unstable.",
                 ("use-single-object-image",),
                 {"componentCount": sense.component_count},
             )
@@ -81,7 +81,7 @@ def assess_sufficiency(sense: SensePack, *, route: str = "relief") -> Sufficienc
             Issue(
                 "RELIEF_2_5D",
                 "info",
-                "현재 로컬 MVP는 정면 기반 2.5D relief를 생성합니다.",
+                "The current local MVP creates a front-view 2.5D relief.",
                 ("configure-single-image-mesh-provider",),
             )
         )

@@ -37,7 +37,7 @@ class NullImageProvider:
     def generate(self, prompt: str) -> GeneratedImage:
         raise ThreeCraftError(
             "IMAGE_PROVIDER_UNAVAILABLE",
-            "이미지 생성 provider가 설정되지 않았습니다.",
+            "No image generation provider is configured.",
             status_code=503,
             remedies=["upload-an-image", "configure-image-provider"],
         )
@@ -52,9 +52,9 @@ class DeterministicDevImageProvider:
     def generate(self, prompt: str) -> GeneratedImage:
         normalized = prompt.strip()
         if not normalized:
-            raise ThreeCraftError("PROMPT_EMPTY", "이미지 생성 설명을 입력하세요.")
+            raise ThreeCraftError("PROMPT_EMPTY", "Enter an image-generation description.")
         if len(normalized) > 1000:
-            raise ThreeCraftError("PROMPT_TOO_LONG", "이미지 생성 설명은 1000자 이하여야 합니다.")
+            raise ThreeCraftError("PROMPT_TOO_LONG", "The image-generation description must be 1,000 characters or fewer.")
 
         digest = hashlib.sha256(normalized.encode("utf-8")).digest()
         seed = int.from_bytes(digest[:8], "big")

@@ -3,13 +3,12 @@ import {
   ApiError,
   assetImageUrl,
   createConversion,
-  generateAsset,
   getBom,
   getCapabilities,
   getJob,
   getPreview,
+  prepareAsset,
   schematicUrl,
-  uploadAsset,
 } from "./api";
 import type { AssetSummary, Bom, Capabilities, FillMode, Job, VoxelPreview } from "./types";
 
@@ -18,31 +17,30 @@ const VoxelViewer = lazy(() =>
 );
 
 const STAGE_LABELS: Record<string, string> = {
-  queued: "대기 중",
-  preprocessing: "입력 준비",
-  assessing: "입력 충분성 확인",
-  reconstructing: "Relief 형상 생성",
-  voxelizing: "Voxel 변환",
-  mapping_blocks: "Minecraft 블록 선택",
-  exporting: "Schematic 생성",
-  validating: "결과 검증",
-  completed: "완료",
-  failed: "실패",
-  cancelled: "취소됨",
+  queued: "Queued",
+  preprocessing: "Preparing input",
+  assessing: "Assessing source sufficiency",
+  reconstructing: "Building relief geometry",
+  voxelizing: "Voxelizing",
+  mapping_blocks: "Selecting Minecraft blocks",
+  exporting: "Writing schematic",
+  validating: "Validating output",
+  completed: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
 };
 
 function errorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    return `${error.message}${error.remedies.length ? ` · 권장: ${error.remedies.join(", ")}` : ""}`;
+    return `${error.message}${error.remedies.length ? ` · Suggested: ${error.remedies.join(", ")}` : ""}`;
   }
-  return error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.";
+  return error instanceof Error ? error.message : "An unknown error occurred.";
 }
 
 export function App() {
   const [capabilities, setCapabilities] = useState<Capabilities | null>(null);
-  const [sourceMode, setSourceMode] = useState<"upload" | "generate">("upload");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [prompt, setPrompt] = useState("파란색 수정 수호자");
+  const [prompt, setPrompt] = useState("blue crystal guardian");
   const [asset, setAsset] = useState<AssetSummary | null>(null);
   const [maxAxis, setMaxAxis] = useState<16 | 32 | 64>(32);
   const [fillMode, setFillMode] = useState<FillMode>("hollow");
@@ -109,29 +107,12 @@ export function App() {
     setBom(null);
   };
 
-  const handleUpload = async () => {
-    if (!selectedFile) {
-      setError("업로드할 이미지를 선택하세요.");
-      return;
-    }
+  const handlePrepareSource = async () => {
     setBusy(true);
     setError(null);
     resetResult();
     try {
-      setAsset(await uploadAsset(selectedFile));
-    } catch (cause) {
-      setError(errorMessage(cause));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const handleGenerate = async () => {
-    setBusy(true);
-    setError(null);
-    resetResult();
-    try {
-      setAsset(await generateAsset(prompt));
+      setAsset(await prepareAsset(selectedFile, prompt));
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
@@ -154,6 +135,8 @@ export function App() {
   };
 
   const blocked = asset?.sufficiency.agentAction === "abort";
+  const generationUnavailable = capabilities?.imageGeneration.available === false;
+  const prepareDisabled = busy || (!selectedFile && (!prompt.trim() || generationUnavailable));
 
   return (
     <main>
@@ -163,20 +146,20 @@ export function App() {
           <p className="eyebrow">IMAGE → VOXEL → SCHEMATIC</p>
           <h1>3Craft</h1>
           <p className="hero-copy">
-            이미지를 검증 가능한 Minecraft Java 블록 조형물로 변환합니다. 현재 MVP는 외부 AI가 아닌 결정적 2.5D relief를 사용합니다.
+            Turn an image into a validated Minecraft Java block sculpture. This MVP uses a deterministic 2.5D relief pipeline, not external AI reconstruction.
           </p>
         </div>
         <div className="target-chip">
           <span>Target</span>
-          <strong>{capabilities ? `Java ${capabilities.target.minecraftVersion}` : "연결 중"}</strong>
+          <strong>{capabilities ? `Java ${capabilities.target.minecraftVersion}` : "Connecting"}</strong>
         </div>
       </header>
 
       {error && (
         <div className="global-error" role="alert">
-          <strong>작업을 완료하지 못했습니다.</strong>
+          <strong>The operation could not be completed.</strong>
           <span>{error}</span>
-          <button type="button" onClick={() => setError(null)} aria-label="오류 닫기">×</button>
+          <button type="button" onClick={() => setError(null)} aria-label="Dismiss error">×</button>
         </div>
       )}
 
@@ -185,47 +168,45 @@ export function App() {
           <article className="panel source-panel">
             <div className="panel-heading">
               <span className="step">01</span>
-              <div><p className="eyebrow">SOURCE</p><h2>이미지 준비</h2></div>
+              <div><p className="eyebrow">SOURCE</p><h2>Prepare source</h2></div>
             </div>
-            <div className="tabs" role="tablist" aria-label="이미지 입력 방식">
-              <button type="button" role="tab" aria-selected={sourceMode === "upload"} onClick={() => setSourceMode("upload")}>업로드</button>
-              <button type="button" role="tab" aria-selected={sourceMode === "generate"} onClick={() => setSourceMode("generate")}>개발 이미지 생성</button>
+            <div className="source-form">
+              <label className="file-drop">
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+                />
+                <strong>{selectedFile?.name ?? "Optional PNG, JPEG, or WebP"}</strong>
+                <span>Up to 10 MB · A provided image always takes precedence over generation</span>
+              </label>
+              {selectedFile && (
+                <button type="button" className="ghost-button" onClick={() => setSelectedFile(null)} disabled={busy}>
+                  Remove image and use generated fallback
+                </button>
+              )}
+              <label>
+                <span className="label-text">Fallback object description</span>
+                <textarea value={prompt} maxLength={1000} onChange={(event) => setPrompt(event.target.value)} />
+              </label>
+              <p className="notice amber">
+                {selectedFile
+                  ? "The selected image will be used. The prompt is ignored unless the image is removed."
+                  : capabilities?.imageGeneration.notice ?? "Checking the local generation provider."}
+              </p>
+              <button type="button" className="primary-button" onClick={handlePrepareSource} disabled={prepareDisabled}>
+                {selectedFile ? "Analyze provided image" : "Generate fallback image"}
+              </button>
             </div>
-
-            {sourceMode === "upload" ? (
-              <div className="source-form">
-                <label className="file-drop">
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
-                  />
-                  <strong>{selectedFile?.name ?? "PNG, JPEG 또는 WebP 선택"}</strong>
-                  <span>최대 10MB · 단일 물체와 투명/단순 배경 권장</span>
-                </label>
-                <button type="button" className="primary-button" onClick={handleUpload} disabled={busy || !selectedFile}>이미지 분석</button>
-              </div>
-            ) : (
-              <div className="source-form">
-                <label>
-                  <span className="label-text">만들고 싶은 물체</span>
-                  <textarea value={prompt} maxLength={1000} onChange={(event) => setPrompt(event.target.value)} />
-                </label>
-                <p className="notice amber">
-                  {capabilities?.imageGeneration.notice ?? "개발 provider 상태를 확인 중입니다."}
-                </p>
-                <button type="button" className="primary-button" onClick={handleGenerate} disabled={busy || !prompt.trim() || capabilities?.imageGeneration.available === false}>개발용 이미지 생성</button>
-              </div>
-            )}
           </article>
 
           <article className="panel settings-panel">
             <div className="panel-heading">
               <span className="step">02</span>
-              <div><p className="eyebrow">BLOCK SETTINGS</p><h2>변환 설정</h2></div>
+              <div><p className="eyebrow">BLOCK SETTINGS</p><h2>Conversion settings</h2></div>
             </div>
             <fieldset disabled={!asset || busy}>
-              <legend>최대 축 크기</legend>
+              <legend>Maximum axis</legend>
               <div className="segmented">
                 {([16, 32, 64] as const).map((value) => (
                   <button key={value} type="button" data-active={maxAxis === value} onClick={() => setMaxAxis(value)}>{value}</button>
@@ -233,12 +214,12 @@ export function App() {
               </div>
             </fieldset>
             <fieldset disabled={!asset || busy}>
-              <legend>채움 방식</legend>
+              <legend>Fill mode</legend>
               <div className="option-grid">
                 {([
-                  ["surface", "정면 표면", "가장 적은 블록"],
-                  ["hollow", "속 비움", "닫힌 외피"],
-                  ["solid", "채움", "가장 단단함"],
+                  ["surface", "Front surface", "Fewest blocks"],
+                  ["hollow", "Hollow shell", "Closed outer shell"],
+                  ["solid", "Solid fill", "Most robust"],
                 ] as const).map(([value, title, detail]) => (
                   <button key={value} type="button" data-active={fillMode === value} onClick={() => setFillMode(value)}>
                     <strong>{title}</strong><span>{detail}</span>
@@ -251,7 +232,7 @@ export function App() {
               <span>Export</span><strong>Sponge v3 `.schem`</strong>
             </div>
             <button type="button" className="convert-button" disabled={!asset || busy || blocked} onClick={handleConvert}>
-              {busy ? "처리 중…" : blocked ? "입력 개선 필요" : "Minecraft 모델 만들기"}
+              {busy ? "Processing…" : blocked ? "Improve the source first" : "Build Minecraft model"}
             </button>
           </article>
         </div>
@@ -259,17 +240,17 @@ export function App() {
         <div className="result-column">
           <article className="panel preview-panel">
             <div className="panel-heading inline">
-              <div><p className="eyebrow">LIVE RESULT</p><h2>Voxel 미리보기</h2></div>
-              {preview && <span className="status-dot">검증 완료</span>}
+              <div><p className="eyebrow">LIVE RESULT</p><h2>Voxel preview</h2></div>
+              {preview && <span className="status-dot">Validated</span>}
             </div>
 
             {preview ? (
               <>
-                <Suspense fallback={<div className="empty-preview"><strong>3D viewer 로딩 중…</strong></div>}>
+                <Suspense fallback={<div className="empty-preview"><strong>Loading 3D viewer…</strong></div>}>
                   <VoxelViewer model={preview} maxLayer={layer} />
                 </Suspense>
                 <div className="layer-control">
-                  <label htmlFor="layer">표시 레이어</label>
+                  <label htmlFor="layer">Visible layer</label>
                   <input id="layer" type="range" min="0" max={preview.dimensions.height - 1} value={layer} onChange={(event) => setLayer(Number(event.target.value))} />
                   <output>{layer + 1} / {preview.dimensions.height}</output>
                 </div>
@@ -277,8 +258,8 @@ export function App() {
             ) : (
               <div className="empty-preview">
                 <div className="empty-cube" aria-hidden="true">◇</div>
-                <strong>{job ? STAGE_LABELS[job.stage] ?? job.stage : "결과가 여기에 표시됩니다"}</strong>
-                <span>{job ? `${job.progress}% · 페이지를 닫아도 local worker는 계속 처리합니다.` : "이미지를 준비하고 변환 설정을 선택하세요."}</span>
+                <strong>{job ? STAGE_LABELS[job.stage] ?? job.stage : "Your result will appear here"}</strong>
+                <span>{job ? `${job.progress}% · The local worker continues if this page closes.` : "Prepare a source and choose conversion settings."}</span>
                 {job && <progress max="100" value={job.progress}>{job.progress}%</progress>}
               </div>
             )}
@@ -286,14 +267,14 @@ export function App() {
 
           {asset && (
             <article className="panel evidence-panel">
-              <div className="source-thumb"><img src={assetImageUrl(asset.asset.assetId)} alt="변환할 원본" /></div>
+              <div className="source-thumb"><img src={assetImageUrl(asset.asset.assetId)} alt="Selected conversion source" /></div>
               <div>
                 <p className="eyebrow">EVIDENCE</p>
-                <h3>{asset.asset.origin === "generated" ? "생성된 설계 이미지" : asset.asset.originalFileName ?? "업로드 이미지"}</h3>
+                <h3>{asset.asset.origin === "generated" ? "Generated design image" : asset.asset.originalFileName ?? "Uploaded image"}</h3>
                 <p>{asset.asset.width} × {asset.asset.height} · {asset.asset.evidenceClass}</p>
                 <div className={`verdict ${asset.sufficiency.verdict}`}>
                   <strong>{asset.sufficiency.verdict.toUpperCase()}</strong>
-                  <span>전경 {Math.round(asset.sense.diagnostics.foregroundRatio * 100)}% · matte {Math.round(asset.sense.diagnostics.matteConfidence * 100)}%</span>
+                  <span>Foreground {Math.round(asset.sense.diagnostics.foregroundRatio * 100)}% · matte {Math.round(asset.sense.diagnostics.matteConfidence * 100)}%</span>
                 </div>
                 <ul className="issue-list">
                   {asset.sufficiency.issues.map((issue) => <li key={issue.code} data-severity={issue.severity}>{issue.message}</li>)}
@@ -305,23 +286,23 @@ export function App() {
           {preview && bom && jobId && (
             <article className="panel delivery-panel">
               <div className="delivery-stats">
-                <div><span>블록</span><strong>{bom.totalOccupied.toLocaleString()}</strong></div>
-                <div><span>종류</span><strong>{Object.keys(bom.blocks).length}</strong></div>
-                <div><span>크기</span><strong>{preview.dimensions.width}×{preview.dimensions.height}×{preview.dimensions.length}</strong></div>
+                <div><span>Blocks</span><strong>{bom.totalOccupied.toLocaleString()}</strong></div>
+                <div><span>Types</span><strong>{Object.keys(bom.blocks).length}</strong></div>
+                <div><span>Size</span><strong>{preview.dimensions.width}×{preview.dimensions.height}×{preview.dimensions.length}</strong></div>
               </div>
               <div className="bom-section">
-                <h3>재료 목록</h3>
+                <h3>Bill of materials</h3>
                 <div className="bom-list">
                   {bomRows.map(([state, count]) => (
                     <div key={state}><span className="swatch" /><code>{state.replace("minecraft:", "")}</code><strong>{count.toLocaleString()}</strong></div>
                   ))}
                 </div>
               </div>
-              <a className="download-button" href={schematicUrl(jobId)} download>검증된 `.schem` 다운로드</a>
+              <a className="download-button" href={schematicUrl(jobId)} download>Download validated `.schem`</a>
               <details>
-                <summary>검증 정보</summary>
+                <summary>Validation details</summary>
                 <code>{preview.semanticHash}</code>
-                <p>Pipeline의 parse, DataVersion, semantic round-trip과 BOM gate를 모두 통과했습니다.</p>
+                <p>The parse, DataVersion, semantic round-trip, and BOM gates all passed.</p>
               </details>
             </article>
           )}
@@ -330,7 +311,7 @@ export function App() {
 
       <footer>
         <span>3Craft MVP · deterministic relief pipeline</span>
-        <span>보이지 않는 3D 면을 AI가 복원하는 기능은 아직 활성화되지 않았습니다.</span>
+        <span>AI reconstruction of unseen 3D surfaces is not enabled.</span>
       </footer>
     </main>
   );

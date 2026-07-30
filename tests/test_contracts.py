@@ -15,7 +15,7 @@ from threecraft.hashing import canonical_json_text, content_hash
 
 def test_canonical_hash_is_key_order_independent() -> None:
     assert content_hash({"b": 2, "a": 1}) == content_hash({"a": 1, "b": 2})
-    assert canonical_json_text({"message": "한글"}).endswith("\n")
+    assert canonical_json_text({"message": "café"}).endswith("\n")
 
 
 def test_canonical_json_rejects_nan() -> None:

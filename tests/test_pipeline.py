@@ -6,7 +6,8 @@ import pytest
 
 from threecraft.contracts import ConversionSettings, FillMode
 from threecraft.errors import ThreeCraftError
-from threecraft.pipeline import ThreeCraftPipeline
+from threecraft.pipeline import DEFAULT_GENERATION_PROMPT, ThreeCraftPipeline
+from threecraft.providers import NullImageProvider
 from threecraft.storage import LocalArtifactStore
 
 
@@ -45,3 +46,40 @@ def test_rejected_asset_cannot_convert(tmp_path, empty_png: bytes) -> None:
     with pytest.raises(ThreeCraftError) as rejected:
         pipeline.convert(summary["asset"]["assetId"], ConversionSettings(max_axis=16))
     assert rejected.value.code == "SUFFICIENCY_REJECTED"
+
+
+def test_source_resolution_prefers_provided_image(tmp_path, object_png: bytes) -> None:
+    pipeline = ThreeCraftPipeline(
+        LocalArtifactStore(tmp_path / "data"),
+        image_provider=NullImageProvider(),
+    )
+    summary = pipeline.resolve_source(
+        image_data=object_png,
+        prompt="this prompt must be ignored",
+        file_name="provided.png",
+        content_type="image/png",
+    )
+    assert summary["asset"]["origin"] == "upload"
+    assert summary["asset"]["evidenceClass"] == "observed"
+    assert summary["asset"]["originalFileName"] == "provided.png"
+
+
+def test_source_resolution_generates_only_when_image_is_absent(tmp_path) -> None:
+    pipeline = ThreeCraftPipeline(LocalArtifactStore(tmp_path / "data"))
+    prompted = pipeline.resolve_source(prompt="green crystal guardian")
+    assert prompted["asset"]["origin"] == "generated"
+    assert prompted["asset"]["provenance"]["prompt"] == "green crystal guardian"
+
+    defaulted = pipeline.resolve_source()
+    assert defaulted["asset"]["origin"] == "generated"
+    assert defaulted["asset"]["provenance"]["prompt"] == DEFAULT_GENERATION_PROMPT
+
+
+def test_invalid_provided_image_never_falls_back_to_generation(tmp_path) -> None:
+    pipeline = ThreeCraftPipeline(
+        LocalArtifactStore(tmp_path / "data"),
+        image_provider=NullImageProvider(),
+    )
+    with pytest.raises(ThreeCraftError) as invalid:
+        pipeline.resolve_source(image_data=b"not-an-image", prompt="fallback is forbidden")
+    assert invalid.value.code == "IMAGE_DECODE_FAILED"

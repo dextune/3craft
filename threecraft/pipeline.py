@@ -23,6 +23,7 @@ from .storage import LocalArtifactStore
 from .sufficiency import assess_sufficiency
 
 ProgressCallback = Callable[[JobStatus, int], None]
+DEFAULT_GENERATION_PROMPT = "a simple freestanding sculpture with a clear silhouette"
 
 
 class ThreeCraftPipeline:
@@ -34,6 +35,25 @@ class ThreeCraftPipeline:
     ) -> None:
         self.store = store or LocalArtifactStore()
         self.image_provider = image_provider or DeterministicDevImageProvider()
+
+    def resolve_source(
+        self,
+        *,
+        image_data: bytes | None = None,
+        prompt: str | None = None,
+        file_name: str | None = None,
+        content_type: str | None = None,
+    ) -> dict[str, Any]:
+        """Use provided image bytes when present; generate only when absent."""
+
+        if image_data is not None:
+            return self.ingest_upload(
+                image_data,
+                file_name=file_name,
+                content_type=content_type,
+            )
+        generation_prompt = prompt.strip() if prompt and prompt.strip() else DEFAULT_GENERATION_PROMPT
+        return self.generate_image(generation_prompt)
 
     def ingest_upload(self, data: bytes, *, file_name: str | None, content_type: str | None) -> dict[str, Any]:
         return self._ingest(
@@ -108,7 +128,7 @@ class ThreeCraftPipeline:
 
     def asset_summary(self, asset_id: str) -> dict[str, Any]:
         if not self.store.asset_exists(asset_id):
-            raise ThreeCraftError("ASSET_NOT_FOUND", "이미지 asset을 찾을 수 없습니다.", status_code=404)
+            raise ThreeCraftError("ASSET_NOT_FOUND", "The image asset was not found.", status_code=404)
         directory = self.store.asset_dir(asset_id)
         return {
             "asset": self.store.read_json(directory / "manifest.json"),
@@ -125,13 +145,13 @@ class ThreeCraftPipeline:
         progress: ProgressCallback | None = None,
     ) -> dict[str, Any]:
         if not self.store.asset_exists(asset_id):
-            raise ThreeCraftError("ASSET_NOT_FOUND", "이미지 asset을 찾을 수 없습니다.", status_code=404)
+            raise ThreeCraftError("ASSET_NOT_FOUND", "The image asset was not found.", status_code=404)
         asset_dir = self.store.asset_dir(asset_id)
         sufficiency = self.store.read_json(asset_dir / "sufficiency.json")
         if sufficiency.get("agentAction") == "abort":
             raise ThreeCraftError(
                 "SUFFICIENCY_REJECTED",
-                "입력 이미지가 변환 최소 조건을 충족하지 않습니다.",
+                "The input image does not meet the minimum conversion requirements.",
                 remedies=[remedy for issue in sufficiency.get("issues", []) for remedy in issue.get("remedies", [])],
             )
 
@@ -187,7 +207,7 @@ class ThreeCraftPipeline:
         if not all(gates.values()):
             raise ThreeCraftError(
                 "DELIVERY_GATE_FAILED",
-                "생성된 schematic이 semantic 검증을 통과하지 못했습니다.",
+                "The generated schematic failed semantic validation.",
                 status_code=500,
             )
 
@@ -236,8 +256,8 @@ class ThreeCraftPipeline:
     def artifact_path(self, job_id: str, name: str) -> Path:
         allowed = {"preview.json", "blocks.json", "model.schem", "delivery.json", "result.json"}
         if name not in allowed:
-            raise ThreeCraftError("ARTIFACT_NOT_FOUND", "요청한 artifact를 찾을 수 없습니다.", status_code=404)
+            raise ThreeCraftError("ARTIFACT_NOT_FOUND", "The requested artifact was not found.", status_code=404)
         path = self.store.job_dir(job_id) / name
         if not path.is_file():
-            raise ThreeCraftError("ARTIFACT_NOT_READY", "artifact가 아직 준비되지 않았습니다.", status_code=409)
+            raise ThreeCraftError("ARTIFACT_NOT_READY", "The artifact is not ready yet.", status_code=409)
         return path

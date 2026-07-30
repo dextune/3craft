@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: 보안 취약점 비공개 보고
+  - name: Privately report a security vulnerability
     url: https://github.com/dextune/3craft/security/advisories/new
-    about: 취약점은 공개 Issue 대신 private security advisory로 알려주세요.
-  - name: 구현 상태와 알려진 한계
+    about: Report vulnerabilities through a private security advisory instead of a public issue.
+  - name: Implementation status and known limitations
     url: https://github.com/dextune/3craft/blob/HEAD/docs/implementation-status.md
-    about: 요청 전에 현재 구현 범위와 production backlog를 확인해 주세요.
+    about: Review the current implementation scope and production backlog before opening a request.

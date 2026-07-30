@@ -1,23 +1,23 @@
-# 계약과 데이터 모델
+# Contracts and Data Model
 
-## 1. 계약 설계 원칙
+## 1. Contract design principles
 
-1. 모든 장기 보존 artifact는 `schemaVersion`을 가진다.
-2. ID는 외부에 노출 가능한 opaque string을 사용한다.
-3. 파일 path나 signed URL을 domain identity로 사용하지 않는다.
-4. source, generated, edited, inferred를 구분한다.
-5. JSON은 canonical serialization 후 semantic hash를 만든다.
-6. binary는 raw SHA-256와 별도 manifest를 가진다.
-7. 날짜는 UTC ISO-8601, 크기는 byte, 시간은 명시 단위로 저장한다.
-8. NaN/Infinity를 JSON에 허용하지 않는다.
-9. unknown enum을 조용히 기본값으로 바꾸지 않는다.
-10. schema 변경은 migration 또는 새 version을 요구한다.
+1. Every long-lived artifact has a `schemaVersion`.
+2. IDs are opaque strings safe for external exposure.
+3. File paths and signed URLs are not domain identities.
+4. Distinguish source, generated, edited, and inferred data.
+5. Compute semantic hashes from canonical JSON serialization.
+6. Binary data has a raw SHA-256 and a separate manifest.
+7. Store dates as UTC ISO-8601, sizes in bytes, and durations with explicit units.
+8. Do not permit NaN or Infinity in JSON.
+9. Never silently convert an unknown enum to a default.
+10. Schema changes require a migration or a new version.
 
-이 문서의 예시는 최종 JSON Schema가 아니라 구현 계약의 기준이다. Milestone 0에서 `packages/contracts`에 machine-readable schema를 작성한다.
+Examples in this document define implementation contracts; they are not final JSON Schemas. Milestone 0 creates machine-readable schemas under `packages/contracts`.
 
-## 2. ID와 naming
+## 2. IDs and naming
 
-권장 prefix:
+Recommended prefixes:
 
 - `ast_`: asset
 - `ref_`: reference entry
@@ -28,13 +28,13 @@
 - `usr_`: user
 - `ses_`: anonymous session
 
-storage key에는 사용자 입력 파일명, 이메일, prompt를 사용하지 않는다.
+Do not put user-supplied filenames, email addresses, or prompts in storage keys.
 
 ```text
 tenants/{ownerId}/jobs/{jobId}/artifacts/{artifactId}/{safeName}
 ```
 
-DB와 log는 ID를 사용하고 실제 storage key는 접근 제한 필드로 취급한다.
+Databases and logs use IDs; the actual storage key is access-restricted.
 
 ## 3. EvidenceAsset
 
@@ -73,12 +73,20 @@ DB와 log는 ID를 사용하고 실제 storage key는 접근 제한 필드로 �
 
 ### 3.2 evidenceClass
 
-- `observed`: 사용자가 제공한 실제 관찰 source
-- `design-intent`: 생성 또는 합성된 목표 이미지
-- `design-hypothesis`: 사용자가 승인하지 않은 후보 view/shape
-- `inferred`: 모델/알고리즘이 추정한 depth, mask, hidden geometry
+- `observed`: an actual observed source supplied by the user
+- `design-intent`: a generated or composited target image
+- `design-hypothesis`: a candidate view or shape not approved by the user
+- `inferred`: depth, masks, or hidden geometry estimated by a model/algorithm
 
-`origin=generated|edited`인 asset은 `observed`가 될 수 없다. 사용자 승인 여부와 증거의 실제 출처를 혼동하지 않는다.
+`origin=generated|edited` assets cannot be `observed`. User approval does not change the actual source of evidence.
+
+Source-resolution invariants:
+
+- Non-`None` image bytes select upload processing even when a prompt also exists.
+- `None` means no image; empty bytes mean an invalid supplied image.
+- Generation is permitted only for the `None` case.
+- Upload provenance is `origin=upload`, `evidenceClass=observed`.
+- Generated fallback provenance is `origin=generated`, `evidenceClass=design-intent`.
 
 ## 4. ReferenceSet
 
@@ -104,14 +112,14 @@ DB와 log는 ID를 사용하고 실제 storage key는 접근 제한 필드로 �
 }
 ```
 
-불변조건:
+Invariants:
 
-- reference는 최소 1개다.
-- ID는 set 안에서 unique다.
-- `assetHash`는 asset manifest와 일치한다.
-- primary는 정확히 하나다.
-- generated view를 observed로 승격하지 않는다.
-- `contentHash` 계산 시 자신과 volatile storage location을 제외한다.
+- A set has at least one reference.
+- IDs are unique within the set.
+- `assetHash` matches the asset manifest.
+- Exactly one reference is primary.
+- Never promote a generated view to observed.
+- Exclude the hash itself and volatile storage locations from `contentHash`.
 
 ## 5. TransformChain
 
@@ -147,7 +155,7 @@ DB와 log는 ID를 사용하고 실제 storage key는 접근 제한 필드로 �
 }
 ```
 
-원본 좌표로 돌아갈 수 없는 operation은 이유를 명시한다. mask와 overlay는 같은 chain을 참조한다.
+An operation that cannot return to source coordinates records the reason. Masks and overlays reference the same chain.
 
 ## 6. SensePack
 
@@ -177,7 +185,7 @@ DB와 log는 ID를 사용하고 실제 storage key는 접근 제한 필드로 �
 }
 ```
 
-metric 정의와 threshold는 policy version에 묶는다.
+Metric definitions and thresholds are bound to a policy version.
 
 ## 7. SufficiencyReport
 
@@ -212,7 +220,7 @@ severity:
 - `error`
 - `blocker`
 
-`reject/abort`는 override할 수 없다. `conditional/ask` override 여부는 policy가 route별로 결정한다.
+`reject/abort` cannot be overridden. Policy determines by route whether `conditional/ask` may be overridden.
 
 ## 8. ConversionRequest
 
@@ -239,13 +247,13 @@ severity:
 
 request validation:
 
-- max-axis는 allowlist 값만 허용한다.
-- shell thickness는 grid에 유효한 범위다.
-- strategy와 required capability가 맞아야 한다.
-- target version과 palette compatibility를 검증한다.
-- server policy가 허용하지 않는 model/provider name을 client가 지정할 수 없다.
+- `max-axis` accepts only allowlisted values.
+- Shell thickness is valid for the grid.
+- Strategy and required capability must agree.
+- Validate target-version and palette compatibility.
+- Clients cannot select model/provider names disallowed by server policy.
 
-## 9. Job과 Attempt
+## 9. Job and Attempt
 
 ```json
 {
@@ -264,7 +272,7 @@ request validation:
 }
 ```
 
-Attempt는 다음을 별도 기록한다.
+An Attempt separately records:
 
 - attempt number
 - lease owner/expiry
@@ -274,9 +282,9 @@ Attempt는 다음을 별도 기록한다.
 - retry cause
 - provider usage
 - CPU/RSS/GPU memory/wall time
-- public error와 operator diagnostic reference
+- public error and operator diagnostic reference
 
-## 10. PipelineManifest와 StageRecord
+## 10. PipelineManifest and StageRecord
 
 ```json
 {
@@ -308,7 +316,7 @@ Attempt는 다음을 별도 기록한다.
 }
 ```
 
-재시도 시 input hash, stage version, settings hash와 output checksum이 모두 일치해야 재사용한다.
+A retry reuses output only when input hashes, stage version, settings hash, and output checksum all match.
 
 ## 11. ArtifactManifest
 
@@ -340,7 +348,7 @@ state:
 - `expired`
 - `deleted`
 
-## 12. ReconstructionResult와 MeshMetadata
+## 12. ReconstructionResult and MeshMetadata
 
 ```json
 {
@@ -368,7 +376,7 @@ state:
 }
 ```
 
-repair report는 제거/변경한 face, component, hole, normal과 volume 변화를 기록한다. raw와 repaired mesh hash를 둘 다 보존한다.
+The repair report records removed or changed faces, components, holes, normals, and volume changes. Preserve both raw and repaired mesh hashes.
 
 ## 13. VoxelModel
 
@@ -394,7 +402,7 @@ repair report는 제거/변경한 face, component, hole, normal과 volume 변화
 }
 ```
 
-semantic hash에는 압축 방식과 상관없이 dimensions, canonical palette와 좌표별 block state 의미를 사용한다.
+The semantic hash uses dimensions, a canonical palette, and coordinate-to-block-state meaning independently of compression.
 
 ## 14. BlockPalette
 
@@ -421,7 +429,7 @@ semantic hash에는 압축 방식과 상관없이 dimensions, canonical palette�
 }
 ```
 
-block state 문자열은 target version에서 유효해야 한다. palette data 출처와 라이선스를 기록한다.
+Every block-state string must be valid in the target version. Record palette-data origin and license.
 
 ## 15. DeliveryManifest
 
@@ -449,9 +457,9 @@ block state 문자열은 target version에서 유효해야 한다. palette data 
 }
 ```
 
-manifest에는 내부 path, signed URL, secret, 사용자 email과 원본 prompt 전체를 포함하지 않는다.
+The manifest excludes internal paths, signed URLs, secrets, user email addresses, and complete original prompts.
 
-## 16. Job Event와 오류
+## 16. Job Event and errors
 
 ```json
 {
@@ -465,7 +473,7 @@ manifest에는 내부 path, signed URL, secret, 사용자 email과 원본 prompt
 }
 ```
 
-오류:
+Error:
 
 ```json
 {
@@ -478,26 +486,26 @@ manifest에는 내부 path, signed URL, secret, 사용자 email과 원본 prompt
 }
 ```
 
-public payload에 stack trace, provider raw body, file path와 key를 넣지 않는다.
+Public payloads exclude stack traces, provider raw bodies, file paths, and keys.
 
-## 17. Canonical hash 규칙
+## 17. Canonical hash rules
 
-JSON canonicalization 제안:
+Proposed JSON canonicalization:
 
 - UTF-8
 - key lexical sort
 - compact separator
-- Unicode를 의미 그대로 유지
-- NaN/Infinity 금지
-- 끝 newline
-- hash field 자체와 승인된 volatile field 제외
+- preserve Unicode semantically
+- forbid NaN/Infinity
+- trailing newline
+- exclude the hash field itself and approved volatile fields
 
 binary:
 
 - byte-level SHA-256
-- semantic hash는 decoder가 해석한 canonical 의미에 대해 별도 계산
+- calculate a separate semantic hash over the canonical meaning interpreted by the decoder
 
-cache key 예시:
+Example cache key:
 
 ```text
 sha256(
@@ -512,11 +520,11 @@ sha256(
 
 ## 18. Schema migration
 
-- additive optional field: 같은 major에서 허용 가능
-- required field/meaning 변경: 새 schema version
-- enum rename: migration 또는 dual-read 기간
-- binary encoding 변경: `encoding` version 변경
-- old artifact는 immutable, 읽기 adapter로 지원
-- migration은 원본을 덮어쓰지 않고 새 artifact와 lineage를 만든다.
+- additive optional field: may be allowed within the same major version
+- required field or meaning change: new schema version
+- enum rename: migration or dual-read period
+- binary encoding change: change the `encoding` version
+- old artifacts remain immutable and are supported through read adapters
+- a migration creates a new artifact and lineage instead of overwriting the source
 
-CI는 current writer→current reader, previous fixture→current reader, round-trip semantic equality를 검사한다.
+CI checks current writer → current reader, previous fixture → current reader, and round-trip semantic equality.

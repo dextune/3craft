@@ -3,47 +3,51 @@
 [![CI](https://github.com/dextune/3craft/actions/workflows/ci.yml/badge.svg)](https://github.com/dextune/3craft/actions/workflows/ci.yml)
 [MIT License](LICENSE)
 
-이미지를 **Minecraft Java Edition 블록 조형물**로 변환하고, 브라우저 미리보기·재료 목록(BOM)·Sponge Schematic v3 `.schem`을 제공하는 실행 가능한 local MVP입니다.
+3Craft is an executable local MVP that converts an image into a **Minecraft Java Edition block sculpture** and provides a browser preview, bill of materials (BOM), and Sponge Schematic v3 `.schem` file.
 
 > [!IMPORTANT]
-> 현재 구현은 결정적인 **2.5D relief pipeline**입니다. 실제 AI image generation이나 single-image 360° mesh reconstruction을 구현한 것처럼 표시하지 않습니다. 생성 탭의 `deterministic-dev`는 외부 AI가 아닌 로컬 procedural fixture provider입니다.
+> The current implementation is a deterministic **2.5D relief pipeline**. It does not claim to perform real AI image generation or single-image 360° mesh reconstruction. The `deterministic-dev` fallback is a local procedural fixture provider, not an external AI service.
 
-## 주요 기능
+## Source policy and pipeline
+
+A supplied image is always authoritative. Generation runs only when no image is supplied; an empty, corrupt, or unsupported supplied image fails validation instead of silently triggering fallback content.
 
 ```text
-PNG/JPEG/WebP 업로드 또는 deterministic-dev 이미지 생성
-  → SHA-256 provenance와 observed/design-intent 구분
+supplied PNG/JPEG/WebP, when present
+otherwise deterministic-dev generated image
+  → SHA-256 provenance and observed/design-intent classification
   → canonical RGBA PNG + matte/depth SensePack
   → route-aware fail-closed sufficiency
   → 16/32/64 relief voxel (surface/hollow/solid)
   → Java-safe full-cube palette + BOM
   → Sponge Schematic v3 / DataVersion 3700
-  → 자체 reader + 독립 nbtlib semantic 검증
-  → FastAPI async local job + React/Three.js preview
+  → built-in reader + independent nbtlib semantic validation
+  → FastAPI asynchronous local job + React/Three.js preview
 ```
 
-| 영역 | 구현 |
+| Area | Implementation |
 |---|---|
-| 입력 | PNG/JPEG/WebP magic, MIME, decode, EXIF, byte/pixel/frame validation |
-| provenance | upload=`observed`, generated=`design-intent`, canonical SHA-256 |
-| voxel | 16/32/64축, surface/hollow/solid, deterministic semantic hash |
+| Input | PNG/JPEG/WebP magic, MIME, decode, EXIF, byte/pixel/frame validation |
+| Source resolution | Supplied bytes first; deterministic generation only when bytes are absent |
+| Provenance | upload=`observed`, generated=`design-intent`, canonical SHA-256 |
+| Voxel | 16/32/64 maximum axis, surface/hollow/solid, deterministic semantic hash |
 | Minecraft | Java 1.20.4, DataVersion 3700, Sponge Schematic v3 |
-| backend | FastAPI, process-local worker, private local artifact store |
-| frontend | React, strict TypeScript, lazy Three.js `InstancedMesh` viewer |
-| 도구 | Web UI, CLI, API/OpenAPI, BOM, `.schem` download |
+| Backend | FastAPI, process-local worker, private local artifact store |
+| Frontend | React, strict TypeScript, lazy Three.js `InstancedMesh` viewer |
+| Interfaces | Web UI, CLI, API/OpenAPI, ChatGPT/OpenAI skill, BOM, `.schem` download |
 
-구현 milestone과 실제 검증 출력은 [구현 상태 및 검증 증거](docs/implementation-status.md)를 참고하세요.
+See [Implementation Status and Validation Evidence](docs/implementation-status.md) for milestone coverage and concrete validation output.
 
-## 빠른 시작
+## Quick start
 
-### 요구 사항
+### Requirements
 
 - Python 3.12+
-- Node.js 20.19+, 22.12+ 또는 24+
+- Node.js 20.19+, 22.12+, or 24+
 - npm
-- Linux/macOS shell (`scripts/dev.sh` 기준; 검증 환경은 Linux)
+- Linux/macOS shell for `scripts/dev.sh` (the validated environment is Linux)
 
-### 설치
+### Install
 
 ```bash
 python3 -m venv .venv
@@ -51,7 +55,7 @@ python3 -m venv .venv
 npm --prefix apps/web ci
 ```
 
-### 실행
+### Run
 
 ```bash
 ./scripts/dev.sh
@@ -61,23 +65,48 @@ npm --prefix apps/web ci
 - API/OpenAPI: <http://127.0.0.1:8000/docs>
 - Health: <http://127.0.0.1:8000/api/v1/health>
 
-API와 Web은 loopback에만 bind합니다. 5173 또는 8000 port가 이미 사용 중이면 다른 port로 자동 이동하지 않고 실패하며, launcher 종료 시 두 child process를 정리합니다.
+The API and Web app bind only to loopback. If port 5173 or 8000 is occupied, the launcher fails instead of selecting another port, and it cleans up both child processes on exit.
 
 > [!WARNING]
-> 현재 API에는 production 인증·tenant isolation·rate limit이 없습니다. 인터넷이나 신뢰할 수 없는 LAN에 노출하지 마세요. 자세한 내용은 [보안 정책](SECURITY.md)을 확인하세요.
+> The current API has no production authentication, tenant isolation, or rate limiting. Do not expose it to the Internet or an untrusted LAN. See the [Security Policy](SECURITY.md).
 
-별도 실행:
+Run services separately when needed:
 
 ```bash
 .venv/bin/python -m uvicorn services.api.main:app --host 127.0.0.1 --port 8000
 npm --prefix apps/web run dev
 ```
 
-runtime artifact는 기본적으로 `.threecraft-data/`에 directory `0700`, file `0600` 권한으로 저장되며 Git에서 제외됩니다.
+Runtime artifacts are stored under `.threecraft-data/` by default, with directory mode `0700` and file mode `0600`, and are excluded from Git.
 
-## 사용법
+## Usage
 
-### CLI 이미지 변환
+### One-command image-first build
+
+With an image, that image wins even when a prompt is also provided:
+
+```bash
+.venv/bin/threecraft build \
+  --image provided.png \
+  --prompt "blue crystal guardian" \
+  --max-axis 32 \
+  --fill hollow \
+  --out threecraft-output
+```
+
+Without an image, the local deterministic provider uses the prompt. A built-in deterministic default is used when the prompt is blank or omitted:
+
+```bash
+.venv/bin/threecraft build \
+  --prompt "blue crystal guardian" \
+  --out threecraft-output
+```
+
+The output directory contains `model.schem`, `preview.json`, `blocks.json`, and `delivery.json`. CLI JSON output reports `sourceAssetId` and `sourceOrigin` (`upload` or `generated`).
+
+### Legacy explicit commands
+
+Convert an existing image directly:
 
 ```bash
 .venv/bin/threecraft convert image.png \
@@ -86,9 +115,7 @@ runtime artifact는 기본적으로 `.threecraft-data/`에 directory `0700`, fil
   --out threecraft-output
 ```
 
-출력 디렉터리에는 `model.schem`, `preview.json`, `blocks.json`, `delivery.json`이 생성됩니다.
-
-### 개발용 이미지 생성
+Create a deterministic development fixture:
 
 ```bash
 .venv/bin/threecraft generate \
@@ -96,79 +123,94 @@ runtime artifact는 기본적으로 `.threecraft-data/`에 directory `0700`, fil
   --out generated-dev.png
 ```
 
-### CLI로 API 실행
+Run the API from the CLI:
 
 ```bash
 .venv/bin/threecraft --data-dir .threecraft-data serve
 ```
 
-환경 변수는 [`.env.example`](.env.example)을 참고하세요. 실제 provider adapter를 검토·구현하기 전에는 `THREECRAFT_IMAGE_PROVIDER=null`로 generation을 비활성화할 수 있습니다.
+See [`.env.example`](.env.example) for environment variables. Set `THREECRAFT_IMAGE_PROVIDER=null` to disable generated fallback while keeping supplied-image processing available.
 
-## API 개요
+## ChatGPT/OpenAI skill
 
-| Method | Path | 설명 |
+The root [`SKILL.md`](SKILL.md) follows the OpenAI/Agent Skills format. When the repository is mounted as a skill, it instructs the agent to:
+
+1. select an explicitly referenced or supplied PNG/JPEG/WebP;
+2. use generation only when no supported image exists;
+3. fail closed rather than replacing an invalid supplied image;
+4. run the one-command build locally;
+5. verify delivery gates, BOM totals, semantic hash, and output files;
+6. return the `.schem`, preview, BOM, and delivery manifest without overstating 2.5D capabilities.
+
+The workflow does not fetch arbitrary URLs or upload user images to third parties.
+
+## API overview
+
+| Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/v1/health` | service health |
-| `GET` | `/api/v1/capabilities` | 지원 strategy/provider/target |
-| `POST` | `/api/v1/assets` | image upload/canonicalization |
-| `GET` | `/api/v1/assets/{id}` | provenance/SensePack/sufficiency |
-| `GET` | `/api/v1/assets/{id}/image` | private canonical source image |
-| `POST` | `/api/v1/image-generations` | deterministic-dev image generation |
-| `POST` | `/api/v1/conversions` | async conversion 생성 |
-| `GET` | `/api/v1/jobs/{id}` | progress/terminal state polling |
-| `POST` | `/api/v1/jobs/{id}/cancel` | safe cancellation 시도 |
-| `GET` | `/api/v1/jobs/{id}/{preview\|bom\|schematic}` | 검증된 artifact |
+| `GET` | `/api/v1/health` | Service health |
+| `GET` | `/api/v1/capabilities` | Supported strategies, provider, and target |
+| `POST` | `/api/v1/sources` | Unified optional-file/optional-prompt source resolution; file wins |
+| `POST` | `/api/v1/assets` | Legacy image upload and canonicalization |
+| `GET` | `/api/v1/assets/{id}` | Provenance, SensePack, and sufficiency |
+| `GET` | `/api/v1/assets/{id}/image` | Private canonical source image |
+| `POST` | `/api/v1/image-generations` | Legacy deterministic-dev image generation |
+| `POST` | `/api/v1/conversions` | Create an asynchronous conversion |
+| `GET` | `/api/v1/jobs/{id}` | Poll progress or terminal state |
+| `POST` | `/api/v1/jobs/{id}/cancel` | Attempt safe cancellation |
+| `GET` | `/api/v1/jobs/{id}/{preview\|bom\|schematic}` | Retrieve a validated artifact |
 
-정확한 request/response schema는 실행 중인 OpenAPI 문서에서 확인할 수 있습니다.
+The running OpenAPI document contains the exact request and response schemas.
 
-## 검증
+## Validation
 
 ```bash
 make check
 ```
 
-또는 개별 실행:
+Or run the principal checks separately:
 
 ```bash
 .venv/bin/python -m pytest -q
 npm --prefix apps/web run build
 ```
 
-현재 기준은 Python **29 tests**, clean `npm ci`, strict TypeScript/Vite build, 실제 local HTTP/CLI smoke와 독립 `nbtlib` parse입니다. CI는 push와 pull request에서 Python tests와 Web build를 실행합니다.
+The current baseline is **33 Python tests**, a clean `npm ci`, a strict TypeScript/Vite build, real local HTTP and CLI smoke tests, and an independent `nbtlib` parse. CI runs the Python tests and Web build on pushes and pull requests.
 
-## 저장소 구조
+## Repository layout
 
 ```text
-threecraft/                    Python domain, pipeline, API와 export
-services/api/                  ASGI entrypoint
+threecraft/                    Python domain, pipeline, API, and export
+services/api/                  ASGI entry point
 apps/web/                      React/Vite/Three.js frontend
-tests/                         unit/integration/API/CLI tests
-docs/implementation-status.md 현재 구현 범위와 검증 증거
-docs/plan/                     제품·기술·운영 roadmap
-scripts/dev.sh                 loopback-only local launcher
+tests/                         Unit, integration, API, and CLI tests
+docs/implementation-status.md Current implementation scope and evidence
+docs/plan/                     Product, technical, and operations roadmap
+scripts/dev.sh                 Loopback-only local launcher
+SKILL.md                       ChatGPT/OpenAI skill workflow
 ```
 
-## 문서
+## Documentation
 
-- [구현 상태와 concrete 검증 증거](docs/implementation-status.md)
-- [전체 제품·기술 계획](docs/plan/README.md)
-- [변경 기록](CHANGELOG.md)
-- [기여 가이드](CONTRIBUTING.md)
-- [보안 정책](SECURITY.md)
+- [Implementation status and concrete validation evidence](docs/implementation-status.md)
+- [Complete product and technical plan](docs/plan/README.md)
+- [Changelog](CHANGELOG.md)
+- [Contribution Guide](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-## 현재 한계
+## Current limitations
 
-- AI 기반 image generation과 360° mesh reconstruction은 아직 연결되지 않았습니다.
-- Postgres, Redis, S3, durable retry/recovery와 production auth가 없습니다.
-- 실제 Minecraft/WorldEdit 수동 import matrix는 production backlog입니다.
-- 실제 browser/GPU별 WebGL 품질·FPS 자동화와 독립 보안 review는 수행하지 않았습니다.
-- Java Edition 1.20.4/DataVersion 3700 및 safe concrete full-cube palette만 목표로 합니다.
+- Real AI image generation and 360° mesh reconstruction are not connected.
+- There is no Postgres, Redis, S3, durable retry/recovery, or production authentication.
+- A manual Minecraft/WorldEdit import compatibility matrix remains production backlog.
+- Browser/GPU-specific WebGL quality and FPS automation and an independent security review have not been completed.
+- The only target is Java Edition 1.20.4/DataVersion 3700 with the safe concrete full-cube palette.
 
-production roadmap은 [계획 문서](docs/plan/README.md)와 [구현 상태 문서](docs/implementation-status.md)에 명시되어 있습니다.
+The [planning documents](docs/plan/README.md) and [implementation status](docs/implementation-status.md) describe the production roadmap explicitly.
 
-## 기여와 라이선스
+## Contributing and license
 
-기여 전 [CONTRIBUTING.md](CONTRIBUTING.md)를 읽어 주세요. 보안 취약점은 공개 Issue 대신 [SECURITY.md](SECURITY.md)의 private reporting 절차를 사용하세요.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before contributing. Report vulnerabilities through the private process in [SECURITY.md](SECURITY.md), not a public issue.
 
-3Craft는 [MIT License](LICENSE)로 배포됩니다. Minecraft는 Microsoft Corporation의 상표이며, 3Craft는 Mojang Studios 또는 Microsoft와 제휴하거나 보증받은 프로젝트가 아닙니다.
+3Craft is distributed under the [MIT License](LICENSE). Minecraft is a trademark of Microsoft Corporation. 3Craft is not affiliated with or endorsed by Mojang Studios or Microsoft.

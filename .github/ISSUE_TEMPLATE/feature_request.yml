@@ -1,34 +1,34 @@
 name: Feature request
-description: 3Craft 기능 또는 개발 경험 개선을 제안합니다.
+description: Propose an improvement to 3Craft features or developer experience.
 title: "[Feature] "
 labels:
   - enhancement
 body:
   - type: markdown
     attributes:
-      value: 구현 상태와 roadmap을 먼저 확인해 주세요. 실제 AI reconstruction과 production infrastructure는 아직 backlog입니다.
+      value: Review the implementation status and roadmap first. Real AI reconstruction and production infrastructure remain backlog items.
   - type: textarea
     id: problem
     attributes:
-      label: 해결하려는 문제
-      description: 구현 방식보다 사용자 또는 개발자의 문제를 설명해 주세요.
+      label: Problem to solve
+      description: Describe the user or developer problem rather than only an implementation approach.
     validations:
       required: true
   - type: textarea
     id: proposal
     attributes:
-      label: 제안
-      description: 예상 입력·출력과 사용자 흐름을 포함해 주세요.
+      label: Proposal
+      description: Include expected inputs, outputs, and user flow.
     validations:
       required: true
   - type: textarea
     id: alternatives
     attributes:
-      label: 고려한 대안
+      label: Alternatives considered
   - type: dropdown
     id: scope
     attributes:
-      label: 예상 범위
+      label: Expected scope
       options:
         - Local MVP improvement
         - Reconstruction / geometry research
@@ -41,4 +41,4 @@ body:
   - type: textarea
     id: risks
     attributes:
-      label: 결정성·보안·개인정보·호환성 영향
+      label: Determinism, security, privacy, and compatibility effects

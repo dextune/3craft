@@ -1,246 +1,255 @@
-# 제품 요구사항
+# Product Requirements
 
-## 1. 제품 문제
+## 1. Product problem
 
-Minecraft에서 사진이나 콘셉트를 블록 조형물로 재현하려면 사용자가 3D 형상을 추정하고, 적절한 해상도로 voxel화하고, 수백 가지 블록 중 색과 배치 제약에 맞는 블록을 고른 뒤, WorldEdit 호환 구조로 변환해야 한다. 3Craft는 이 과정을 자동화하되 AI의 추정과 실제 관찰 정보를 분리하고 사용자가 결과 크기·재료·형태를 제어할 수 있게 한다.
+Recreating a photograph or concept as a Minecraft block sculpture requires a user to infer a 3D shape, voxelize it at a useful resolution, choose from hundreds of blocks while respecting color and placement constraints, and convert the result into a WorldEdit-compatible structure. 3Craft aims to automate that process while separating AI inference from observed information and allowing the user to control size, material, and form.
 
-## 2. 목표와 비목표
+## 2. Goals and non-goals
 
-### 2.1 목표
+### 2.1 Goals
 
-- `G-01`: 3D/NBT 지식이 없는 사용자도 이미지 한 장으로 블록 조형물을 생성한다.
-- `G-02`: 미리보기 이미지가 아니라 실제 Minecraft 도구에서 읽을 수 있는 구조 파일을 제공한다.
-- `G-03`: 크기, 채움 방식, palette, 회전과 품질/비용 trade-off를 사용자가 제어한다.
-- `G-04`: 보이지 않는 면의 추정, 손실된 특징과 export target version을 투명하게 설명한다.
-- `G-05`: 외부 image/reconstruction provider를 교체할 수 있고 동일한 후처리·export 계약을 사용한다.
-- `G-06`: 동일 intermediate mesh와 설정은 동일 voxel 결과를 만든다.
-- `G-07`: invalid output을 성공으로 공개하지 않는 fail-closed 제품 경험을 제공한다.
+- `G-01`: Enable users without 3D or NBT knowledge to create a block sculpture from one image.
+- `G-02`: Deliver a structure file readable by actual Minecraft tools, not merely a preview image.
+- `G-03`: Let users control size, fill mode, palette, rotation, and quality/cost trade-offs.
+- `G-04`: Explain inferred hidden surfaces, lost features, and the export target version transparently.
+- `G-05`: Make external image/reconstruction providers replaceable behind common post-processing and export contracts.
+- `G-06`: Produce the same voxel result from the same intermediate mesh and settings.
+- `G-07`: Provide a fail-closed experience that never exposes an invalid output as a success.
+- `G-08`: Treat a supplied image as authoritative and generate fallback content only when no image was supplied.
 
-### 2.2 MVP 비목표
+### 2.2 MVP non-goals
 
-- Minecraft 서버나 사용자의 월드에 직접 구조물을 배치
-- 리소스팩용 item/entity JSON 또는 Blockbench project 생성
-- animation, rig, skin 또는 mob behavior 생성
-- redstone 의미론, 내부 동선 또는 구조 공학 자동 설계
-- 도시, 건물 내부, 복수 인물 장면의 정확한 복원
-- 실제 치수나 공학적 정확성을 보장하는 digital twin
-- 모든 Minecraft/mod/edition/version 동시 지원
-- 사용자 콘텐츠 marketplace와 공개 gallery
-- 생성된 뒷면을 실제 관찰 데이터처럼 표시
+- Place structures directly into a Minecraft server or user world.
+- Generate resource-pack item/entity JSON or Blockbench projects.
+- Generate animation, rigs, skins, or mob behavior.
+- Automatically design redstone semantics, internal circulation, or structural engineering.
+- Accurately reconstruct cities, building interiors, or multi-person scenes.
+- Guarantee real dimensions or engineering-grade digital twins.
+- Support every Minecraft mod, edition, and version simultaneously.
+- Provide a user-content marketplace or public gallery.
+- Present generated backs as if they were observed data.
 
-## 3. 대상 사용자
+## 3. Target users
 
-### Persona A: 일반 플레이어
+### Persona A: general player
 
-- 한 장의 캐릭터, 동물, 장식품 이미지를 구조물로 만들고 싶다.
-- 3D 도구 경험이 적다.
-- 빠른 기본값, 명확한 오류와 다운로드 안내가 중요하다.
+- Wants to turn one image of a character, animal, or decoration into a structure.
+- Has little experience with 3D tools.
+- Values fast defaults, clear errors, and download guidance.
 
-### Persona B: Minecraft 건축가/콘텐츠 제작자
+### Persona B: Minecraft builder/content creator
 
-- 서버 로비, 영상, 맵에 넣을 조형물이 필요하다.
-- 크기, block palette, hollow/solid와 레이어를 제어하고 싶다.
-- BOM과 WorldEdit 호환성이 중요하다.
+- Needs sculptures for a server lobby, video, or map.
+- Wants control over size, block palette, hollow/solid mode, and layers.
+- Values BOM accuracy and WorldEdit compatibility.
 
-### Persona C: 개발자/운영자
+### Persona C: developer/operator
 
-- repeatable job, provenance, API와 batch 처리가 필요하다.
-- model version, seed, cache, 비용과 결과 결정성을 중요하게 본다.
-- 공개 API는 후속이지만 내부 API는 이 요구를 막지 않게 설계한다.
+- Needs repeatable jobs, provenance, APIs, and batch processing.
+- Values model versions, seeds, caching, cost, and result determinism.
+- Public APIs come later, but internal APIs must not preclude these needs.
 
-MVP UI는 A와 B에 우선 최적화한다.
+The MVP UI prioritizes personas A and B.
 
-## 4. 핵심 사용자 여정
+## 4. Core user journeys
 
-### 4.1 업로드에서 schematic까지
+### 4.1 Source selection to schematic
 
-1. 사용자가 PNG/JPEG/WebP를 선택한다.
-2. client 사전 검증 후 private storage에 업로드한다.
-3. 서버가 파일 signature, decode, 크기와 안전성을 재검증한다.
-4. 자동 배경 제거와 quality diagnostics를 표시한다.
-5. 사용자는 16/32/64 크기, 복원 경로, fill mode와 palette를 고른다.
-6. 충분성 gate가 경고·필수 보완·중단 중 하나를 제시한다.
-7. 사용자가 허용된 조건으로 job을 생성한다.
-8. 화면은 단계와 진행률을 표시하고 새로고침 후 복구한다.
-9. 결과 viewer에서 회전, 레이어, 블록 수량과 경고를 확인한다.
-10. 검증된 `.schem`, BOM과 manifest를 다운로드한다.
+1. The user may provide a PNG/JPEG/WebP and may also provide a descriptive prompt.
+2. If an image is present, the client and server choose it regardless of the prompt.
+3. The server validates signature, decoding, dimensions, and safety. An invalid supplied image fails; it never triggers generated fallback content.
+4. Only when no image exists does the configured provider generate a source from the prompt or deterministic default.
+5. The source is stored privately, canonicalized, and classified as upload=`observed` or generated=`design-intent`.
+6. Automated background removal and quality diagnostics are shown.
+7. The user selects a 16/32/64 size, reconstruction route, fill mode, and palette.
+8. A sufficiency gate returns a warning, required remediation, or stop decision.
+9. The user creates a job under the allowed conditions.
+10. The screen shows stage and progress and can recover after refresh.
+11. The result viewer shows rotation, layers, block quantities, and warnings.
+12. The user downloads a validated `.schem`, BOM, and manifest.
 
-### 4.2 프롬프트에서 schematic까지
+### 4.2 Prompt fallback to schematic
 
-1. 사용자가 원하는 물체를 설명한다.
-2. 시스템이 single-object 생성 profile과 제약을 보여준다.
-3. 이미지 provider가 후보를 생성한다.
-4. 후보마다 provider/model/seed/prompt provenance를 기록한다.
-5. 사용자가 하나를 선택한다.
-6. 해당 asset은 `design-intent`로 분류되고 업로드 asset과 같은 conversion pipeline을 사용한다.
+1. No supported source image is available.
+2. The user describes the intended object, or the client uses a documented default.
+3. The system shows the single-object generation profile and constraints.
+4. The configured image provider creates candidates.
+5. Provider/model/seed/prompt provenance is recorded for every candidate.
+6. The selected candidate remains `design-intent` and enters the same conversion pipeline as an uploaded asset.
 
-### 4.3 실패와 재시도
+### 4.3 Failure and retry
 
-1. job이 특정 stage에서 실패한다.
-2. 사용자에게 오류 코드가 아닌 이해 가능한 원인과 remedy를 보여준다.
-3. retryable 오류면 동일 job attempt 또는 clone job을 제공한다.
-4. 입력 부족이면 더 나은 이미지, side view, relief 또는 낮은 해상도를 제안한다.
-5. 원본을 재업로드하지 않고 설정만 바꿔 새 conversion을 만들 수 있다.
+1. A job fails at a specific stage.
+2. The user sees an understandable cause and remedy, not only an error code.
+3. A retryable failure offers a same-job attempt or cloned job.
+4. Insufficient input suggests a better image, side view, relief route, or lower resolution.
+5. Settings can be changed for a new conversion without re-uploading the source.
+6. A corrupt or unsupported supplied file must be replaced or removed explicitly before generated fallback can run.
 
-## 5. 기능 요구사항
+## 5. Functional requirements
 
-### 5.1 Asset와 입력
+### 5.1 Assets and source input
 
-- `FR-ASSET-001 MUST`: PNG, JPEG, WebP를 지원한다.
-- `FR-ASSET-002 MUST`: extension과 client MIME이 아니라 magic byte와 실제 decode 결과를 신뢰한다.
-- `FR-ASSET-003 MUST`: byte size, decoded pixel count, width/height와 frame 수를 제한한다.
-- `FR-ASSET-004 MUST`: EXIF orientation을 반영하고 불필요한 metadata를 제거한 canonical image를 만든다.
-- `FR-ASSET-005 MUST`: 원본은 immutable artifact로 보존하고 전처리본은 별도 artifact로 만든다.
-- `FR-ASSET-006 MUST`: source SHA-256와 사용자/생성 origin을 기록한다.
-- `FR-ASSET-007 SHOULD`: alpha가 있으면 segmentation의 우선 evidence로 사용한다.
-- `FR-ASSET-008 SHOULD`: 자동 mask를 변환 전에 비교할 수 있게 한다.
-- `FR-ASSET-009 MUST`: 임의 URL을 서버가 가져오는 입력은 MVP에서 금지한다.
+- `FR-ASSET-001 MUST`: Support PNG, JPEG, and WebP.
+- `FR-ASSET-002 MUST`: Trust magic bytes and actual decoding, not extension or client MIME alone.
+- `FR-ASSET-003 MUST`: Limit byte size, decoded pixel count, width/height, and frame count.
+- `FR-ASSET-004 MUST`: Apply EXIF orientation and produce a canonical image with unnecessary metadata removed.
+- `FR-ASSET-005 MUST`: Preserve the original as an immutable artifact and create preprocessing outputs separately.
+- `FR-ASSET-006 MUST`: Record source SHA-256 and upload/generated origin.
+- `FR-ASSET-007 SHOULD`: Prefer existing alpha as segmentation evidence.
+- `FR-ASSET-008 SHOULD`: Allow comparison of the automatic mask before conversion.
+- `FR-ASSET-009 MUST`: Forbid server-side fetching of arbitrary URLs in the MVP.
+- `FR-ASSET-010 MUST`: Prefer supplied bytes over any prompt and invoke generation only when bytes are absent.
+- `FR-ASSET-011 MUST`: Treat empty or invalid supplied bytes as validation failures, not absence.
 
-### 5.2 이미지 생성
+### 5.2 Image generation
 
-- `FR-GEN-001 MUST`: 텍스트 prompt로 변환용 이미지를 생성할 수 있다.
-- `FR-GEN-002 MUST`: provider 호출은 server-side adapter를 통한다.
-- `FR-GEN-003 MUST`: provider/model/final prompt/seed/request ID와 비용 metadata를 기록한다.
-- `FR-GEN-004 MUST`: 생성 이미지를 observed로 분류하지 않는다.
-- `FR-GEN-005 SHOULD`: single object, full body/object in frame, neutral background, moderate perspective를 보조 prompt에 적용한다.
-- `FR-GEN-006 SHOULD`: provider 거부, quota와 timeout을 사용자 메시지로 변환한다.
-- `FR-GEN-007 MAY`: 정면·측면·후면의 일관된 multi-view 생성을 지원한다.
+- `FR-GEN-001 MUST`: Support generation of a conversion source from a text prompt when no image is supplied.
+- `FR-GEN-002 MUST`: Route provider calls through a server-side adapter.
+- `FR-GEN-003 MUST`: Record provider, model, final prompt, seed, request ID, and cost metadata.
+- `FR-GEN-004 MUST`: Never classify generated images as observed.
+- `FR-GEN-005 SHOULD`: Apply helper prompts for a single object, complete object in frame, neutral background, and moderate perspective.
+- `FR-GEN-006 SHOULD`: Convert provider rejection, quota, and timeout responses into user messages.
+- `FR-GEN-007 MAY`: Support consistent front/side/back multi-view generation.
+- `FR-GEN-008 MUST`: Remain unavailable, rather than fabricating output, when no provider is configured.
 
-### 5.3 충분성·전처리
+### 5.3 Sufficiency and preprocessing
 
-- `FR-SUF-001 MUST`: conversion 전 image diagnostics와 route-aware sufficiency를 실행한다.
-- `FR-SUF-002 MUST`: 결과는 `pass|conditional|reject`, `continue|ask|abort`, issue와 remedy를 포함한다.
-- `FR-SUF-003 MUST`: 빈 foreground, decode 실패, 지나치게 작은 피사체는 production conversion을 막는다.
-- `FR-SUF-004 MUST`: single image의 hidden side가 inferred임을 결과에 표시한다.
-- `FR-SUF-005 SHOULD`: 고품질 mesh 경로에서 side/back evidence 부족을 더 엄격하게 처리한다.
-- `FR-SUF-006 SHOULD`: relief 경로는 단일 정면 이미지에 맞는 별도 gate를 사용한다.
-- `FR-SUF-007 MAY`: 사용자가 warning을 override할 수 있으나 이유와 policy version을 기록한다.
+- `FR-SUF-001 MUST`: Run image diagnostics and route-aware sufficiency before conversion.
+- `FR-SUF-002 MUST`: Return `pass|conditional|reject`, `continue|ask|abort`, issues, and remedies.
+- `FR-SUF-003 MUST`: Block production conversion for an empty foreground, decode failure, or an extremely small subject.
+- `FR-SUF-004 MUST`: Mark hidden surfaces from a single image as inferred.
+- `FR-SUF-005 SHOULD`: Apply stricter side/back evidence requirements for high-quality mesh routes.
+- `FR-SUF-006 SHOULD`: Use a separate gate suited to a single front image for the relief route.
+- `FR-SUF-007 MAY`: Allow warning overrides while recording the reason and policy version.
 
 ### 5.4 Reconstruction
 
-- `FR-REC-001 MUST`: deterministic relief baseline을 제공한다.
-- `FR-REC-002 MUST`: 하나 이상의 single-image reconstruction adapter를 선택 가능하게 한다.
-- `FR-REC-003 MUST`: provider/model version, seed, runtime과 output checksum을 저장한다.
-- `FR-REC-004 MUST`: 빈/NaN/invalid mesh를 다음 단계로 넘기지 않는다.
-- `FR-REC-005 MUST`: raw mesh와 normalized/repaired mesh를 구분한다.
-- `FR-REC-006 SHOULD`: model/provider 실패 시 허용된 fallback을 제안한다.
-- `FR-REC-007 MAY`: 사용자 제공 또는 생성 multi-view를 사용한다.
+- `FR-REC-001 MUST`: Provide a deterministic relief baseline.
+- `FR-REC-002 MUST`: Make at least one single-image reconstruction adapter selectable in the production target.
+- `FR-REC-003 MUST`: Store provider/model version, seed, runtime, and output checksum.
+- `FR-REC-004 MUST`: Never pass an empty, NaN, or invalid mesh to the next stage.
+- `FR-REC-005 MUST`: Distinguish raw meshes from normalized/repaired meshes.
+- `FR-REC-006 SHOULD`: Suggest only permitted fallbacks after model/provider failure.
+- `FR-REC-007 MAY`: Use user-provided or generated multi-view input.
 
-### 5.5 Voxel과 palette
+### 5.5 Voxels and palettes
 
-- `FR-VOX-001 MUST`: 최대 축 16, 32, 64 preset을 제공한다.
-- `FR-VOX-002 MUST`: `surface`, `hollow`, `solid`의 의미를 고정하고 결과 metadata에 기록한다.
-- `FR-VOX-003 MUST`: 동일 mesh/settings/palette version에 결정적인 결과를 낸다.
-- `FR-VOX-004 MUST`: 사용 가능한 Minecraft block state를 versioned palette로 제한한다.
-- `FR-VOX-005 MUST`: 중력, 투명, block entity와 위험한 block category를 filter할 수 있다.
-- `FR-VOX-006 MUST`: total count, block별 count, dimensions와 component 수를 계산한다.
-- `FR-VOX-007 SHOULD`: perceptual color mapping을 사용한다.
-- `FR-VOX-008 SHOULD`: 선택적 dithering과 최소 feature/두께 정책을 제공한다.
-- `FR-VOX-009 SHOULD`: disconnected/floating component를 경고하거나 정책에 따라 제거한다.
-- `FR-VOX-010 MAY`: custom allow/deny palette를 제공한다.
+- `FR-VOX-001 MUST`: Provide maximum-axis presets of 16, 32, and 64.
+- `FR-VOX-002 MUST`: Fix the meanings of `surface`, `hollow`, and `solid` and record the selected mode.
+- `FR-VOX-003 MUST`: Produce deterministic results for the same mesh/settings/palette version.
+- `FR-VOX-004 MUST`: Restrict output to a versioned palette of valid Minecraft block states.
+- `FR-VOX-005 MUST`: Filter gravity, transparent, block-entity, and hazardous block categories.
+- `FR-VOX-006 MUST`: Calculate total count, per-block count, dimensions, and component count.
+- `FR-VOX-007 SHOULD`: Use perceptual color mapping.
+- `FR-VOX-008 SHOULD`: Offer optional dithering and minimum feature/thickness policies.
+- `FR-VOX-009 SHOULD`: Warn about or remove disconnected/floating components according to policy.
+- `FR-VOX-010 MAY`: Support custom allow/deny palettes.
 
-### 5.6 Job과 상태
+### 5.6 Jobs and state
 
-- `FR-JOB-001 MUST`: image generation과 conversion을 비동기 job으로 처리한다.
-- `FR-JOB-002 MUST`: 현재 stage, 단조 증가 progress와 public event를 제공한다.
-- `FR-JOB-003 MUST`: `completed`, `failed`, `cancelled` terminal state를 구분한다.
-- `FR-JOB-004 MUST`: idempotency key와 request hash로 중복 job을 통제한다.
-- `FR-JOB-005 MUST`: queue의 at-least-once delivery에서 중복 공개 artifact가 생기지 않아야 한다.
-- `FR-JOB-006 SHOULD`: queued job 취소와 실행 중 cancel request를 지원한다.
-- `FR-JOB-007 SHOULD`: retryable/terminal 오류를 구분한다.
+- `FR-JOB-001 MUST`: Process image generation and conversion as asynchronous jobs in the production architecture.
+- `FR-JOB-002 MUST`: Expose current stage, monotonically increasing progress, and public events.
+- `FR-JOB-003 MUST`: Distinguish `completed`, `failed`, and `cancelled` terminal states.
+- `FR-JOB-004 MUST`: Control duplicate jobs through idempotency keys and request hashes.
+- `FR-JOB-005 MUST`: Prevent duplicate published artifacts under at-least-once queue delivery.
+- `FR-JOB-006 SHOULD`: Support queued-job cancellation and in-progress cancel requests.
+- `FR-JOB-007 SHOULD`: Distinguish retryable and terminal failures.
 
-### 5.7 Viewer와 결과
+### 5.7 Viewer and results
 
-- `FR-VIEW-001 MUST`: orbit, zoom, pan과 reset을 제공한다.
-- `FR-VIEW-002 MUST`: dimensions, total blocks, block별 BOM과 warnings를 표시한다.
-- `FR-VIEW-003 MUST`: 원본 이미지와 voxel 결과를 비교한다.
-- `FR-VIEW-004 SHOULD`: X/Y/Z layer 또는 clipping view를 제공한다.
-- `FR-VIEW-005 SHOULD`: block 선택 시 block state를 표시한다.
-- `FR-VIEW-006 SHOULD`: 배경/grid/lighting을 바꿀 수 있다.
-- `FR-VIEW-007 MUST`: 결과 교체·route 이동 시 GPU resource를 해제한다.
+- `FR-VIEW-001 MUST`: Provide orbit, zoom, pan, and reset.
+- `FR-VIEW-002 MUST`: Show dimensions, total blocks, per-block BOM, and warnings.
+- `FR-VIEW-003 MUST`: Compare the source image and voxel result.
+- `FR-VIEW-004 SHOULD`: Provide X/Y/Z layers or clipping views.
+- `FR-VIEW-005 SHOULD`: Show block state when a block is selected.
+- `FR-VIEW-006 SHOULD`: Allow background, grid, and lighting changes.
+- `FR-VIEW-007 MUST`: Release GPU resources when results change or routes unmount.
 
 ### 5.8 Export
 
-- `FR-EXP-001 MUST`: Java Edition용 `.schem`을 생성한다.
-- `FR-EXP-002 MUST`: target Minecraft version과 DataVersion을 manifest에 기록한다.
-- `FR-EXP-003 MUST`: 독립 parser round-trip을 통과한 결과만 공개한다.
-- `FR-EXP-004 MUST`: schematic count와 BOM이 일치해야 한다.
-- `FR-EXP-005 MUST`: manifest에 source lineage, pipeline/model/palette version과 checksums를 기록한다.
-- `FR-EXP-006 MUST`: source image, secret, internal path와 signed URL을 bundle에 포함하지 않는다.
-- `FR-EXP-007 SHOULD`: BOM을 JSON과 CSV로 제공한다.
-- `FR-EXP-008 MAY`: `.litematic`, `.mcstructure`, GLB를 adapter로 추가한다.
+- `FR-EXP-001 MUST`: Generate `.schem` for Java Edition.
+- `FR-EXP-002 MUST`: Record target Minecraft version and DataVersion in the manifest.
+- `FR-EXP-003 MUST`: Publish only results that pass an independent parser round-trip.
+- `FR-EXP-004 MUST`: Require schematic and BOM counts to match.
+- `FR-EXP-005 MUST`: Record source lineage, pipeline/model/palette versions, and checksums.
+- `FR-EXP-006 MUST`: Exclude source images, secrets, internal paths, and signed URLs from delivery bundles.
+- `FR-EXP-007 SHOULD`: Provide BOM data as JSON and CSV.
+- `FR-EXP-008 MAY`: Add `.litematic`, `.mcstructure`, or GLB through adapters.
 
-## 6. 비기능 요구사항
+## 6. Non-functional requirements
 
-### 6.1 성능
+### 6.1 Performance
 
-- `NFR-PERF-001`: inference를 제외한 API p95 목표는 500ms다.
-- `NFR-PERF-002`: 활성 job progress는 최대 2초 간격으로 갱신한다.
-- `NFR-PERF-003`: 권장 데스크톱에서 64축 preview 조작 30FPS 이상을 목표로 한다.
-- `NFR-PERF-004`: 대규모 voxel decode와 instance 배열 생성은 Web Worker를 사용한다.
-- `NFR-PERF-005`: 128축은 성능·비용 gate를 통과하기 전 공개하지 않는다.
+- `NFR-PERF-001`: Target a p95 under 500 ms for API operations excluding inference.
+- `NFR-PERF-002`: Update active-job progress at most every two seconds.
+- `NFR-PERF-003`: Target at least 30 FPS while manipulating a 64-axis preview on a recommended desktop.
+- `NFR-PERF-004`: Use a Web Worker for large voxel decoding and instance-array creation.
+- `NFR-PERF-005`: Do not expose 128-axis output before performance and cost gates pass.
 
-### 6.2 신뢰성과 결정성
+### 6.2 Reliability and determinism
 
-- `NFR-REL-001`: stage manifest와 checksum으로 crash 후 안전한 재시도를 지원한다.
-- `NFR-REL-002`: completed는 검증된 필수 artifact가 모두 있을 때만 설정한다.
-- `NFR-REL-003`: ML stage의 비결정성과 deterministic post-process를 구분한다.
-- `NFR-REL-004`: pipeline/palette/schema version 변경 시 cache key가 분리된다.
+- `NFR-REL-001`: Use stage manifests and checksums for safe retry after crashes.
+- `NFR-REL-002`: Set `completed` only when every required validated artifact exists.
+- `NFR-REL-003`: Distinguish ML-stage nondeterminism from deterministic post-processing.
+- `NFR-REL-004`: Separate cache keys after pipeline, palette, or schema version changes.
 
-### 6.3 호환성과 접근성
+### 6.3 Compatibility and accessibility
 
-- `NFR-COMP-001`: 최신 Chrome, Edge, Firefox의 최근 두 major를 우선한다.
-- `NFR-COMP-002`: target Minecraft/WorldEdit 조합을 명시하고 smoke matrix를 유지한다.
-- `NFR-A11Y-001`: canvas 외에 모든 결과 정보를 구조화된 text로 제공한다.
-- `NFR-A11Y-002`: 업로드→변환→다운로드 핵심 흐름을 키보드로 수행할 수 있다.
+- `NFR-COMP-001`: Prioritize the two most recent major versions of Chrome, Edge, and Firefox.
+- `NFR-COMP-002`: State the target Minecraft/WorldEdit combinations and maintain a smoke matrix.
+- `NFR-A11Y-001`: Provide all result information as structured text outside the canvas.
+- `NFR-A11Y-002`: Support the upload-to-convert-to-download flow with a keyboard.
 
-### 6.4 보안·개인정보·비용
+### 6.4 Security, privacy, and cost
 
-- `NFR-SEC-001`: asset은 기본 private이고 owner scope로 접근한다.
-- `NFR-SEC-002`: provider secret은 client bundle과 사용자 오류에 노출하지 않는다.
-- `NFR-SEC-003`: worker는 resource/time/network 제한 아래 실행한다.
-- `NFR-PRIV-001`: 보존 기간과 외부 provider 전송을 사용자에게 알린다.
-- `NFR-COST-001`: user/job별 GPU seconds, generation count와 storage quota를 적용할 수 있다.
+- `NFR-SEC-001`: Assets are private by default and owner-scoped.
+- `NFR-SEC-002`: Provider secrets never enter the client bundle or user-visible errors.
+- `NFR-SEC-003`: Workers run under resource, time, and network restrictions.
+- `NFR-PRIV-001`: Tell users about retention periods and external provider transmission.
+- `NFR-COST-001`: Support per-user/job GPU-seconds, generation-count, and storage quotas.
 
-## 7. 성공 지표
+## 7. Success metrics
 
-초기 beta에서 측정한다.
+Measure during the initial beta:
 
-- valid input의 end-to-end completion rate
-- schematic semantic validation success rate
-- WorldEdit manual import success rate
-- reconstruction/voxel/export stage별 실패율
-- 32축 median job duration과 GPU seconds
-- 재변환률과 route 변경률
-- 다운로드 성공률
-- 사용자 평가 기준 ‘물체를 알아볼 수 있음’ 비율
-- invalid upload 차단률과 authorization incident 0건
-- 64축 viewer p95 frame time
+- end-to-end completion rate for valid input;
+- schematic semantic-validation success rate;
+- manual WorldEdit import success rate;
+- failure rate by reconstruction/voxel/export stage;
+- median 32-axis job duration and GPU-seconds;
+- reconversion and route-change rates;
+- download success rate;
+- user-rated subject recognizability;
+- invalid-upload block rate and zero authorization incidents;
+- p95 frame time for the 64-axis viewer.
 
-지표 목표치는 benchmark baseline 확보 후 Accepted ADR로 확정한다. 숫자를 맞추기 위해 hard validation을 완화하지 않는다.
+Set numerical targets in an Accepted ADR after establishing benchmark baselines. Never weaken hard validation merely to reach a metric.
 
-## 8. MVP 인수 시나리오
+## 8. MVP acceptance scenarios
 
-1. 투명 PNG와 일반 JPEG 각각을 업로드한다.
-2. canonical asset과 provenance가 생성된다.
-3. mask와 sufficiency 결과를 확인한다.
-4. 32축 hollow, safe palette로 conversion을 생성한다.
-5. job이 새로고침 후에도 추적된다.
-6. viewer와 BOM이 로드된다.
-7. `.schem`과 manifest를 다운로드한다.
-8. 독립 parser와 실제 WorldEdit에서 불러온다.
-9. BOM과 schematic block count가 일치한다.
-10. 동일 repaired mesh/settings로 다시 voxel화했을 때 같은 semantic hash가 나온다.
-11. 손상 이미지, 빈 foreground, 권한 없는 artifact와 invalid schematic은 공개되지 않는다.
-12. 생성 이미지 경로도 동일 conversion 계약을 사용하며 provenance는 `design-intent`로 남는다.
+1. Upload both a transparent PNG and a standard JPEG.
+2. Create canonical assets and provenance.
+3. Inspect mask and sufficiency results.
+4. Create a 32-axis, hollow, safe-palette conversion.
+5. Track the job after a refresh.
+6. Load the viewer and BOM.
+7. Download `.schem` and manifest.
+8. Import with an independent parser and actual WorldEdit.
+9. Verify that BOM and schematic block counts match.
+10. Re-voxelize the same repaired mesh/settings and obtain the same semantic hash.
+11. Never expose a corrupt image, empty foreground, unauthorized artifact, or invalid schematic.
+12. Use the same conversion contract for generated images while retaining `design-intent` provenance.
+13. When image and prompt are both present, verify upload origin and ensure generation is not called.
+14. When no image is present, verify generated origin or an explicit provider-unavailable failure.
 
-## 9. 알려진 한계의 제품 표기
+## 9. Product disclosure of known limitations
 
-UI와 결과 manifest는 다음을 숨기지 않는다.
+The UI and result manifest must disclose:
 
-- 한 장의 이미지에서 보이지 않는 뒷면은 추정이다.
-- 투명·반사·얇은 구조와 깊은 구멍은 손실될 수 있다.
-- 낮은 block resolution은 작은 특징을 제거한다.
-- 생성 이미지의 시점 간 일관성은 보장되지 않을 수 있다.
-- `.schem` 호환성은 명시된 Minecraft/WorldEdit 조합에 한정된다.
-- 선택한 palette에 따라 색상과 재질 인상이 크게 달라진다.
+- A back not visible in a single image is inferred.
+- Transparent, reflective, thin structures, and deep holes may be lost.
+- Low block resolution removes small features.
+- View-to-view consistency of generated images may not be guaranteed.
+- `.schem` compatibility is limited to stated Minecraft/WorldEdit combinations.
+- The selected palette can substantially change perceived color and material.

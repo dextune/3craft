@@ -30,7 +30,7 @@ def build_relief_voxel(
         image = image.resize(mask.size, Image.Resampling.LANCZOS)
     bbox = mask.getbbox()
     if bbox is None:
-        raise ThreeCraftError("FOREGROUND_EMPTY", "변환할 전경 물체가 없습니다.")
+        raise ThreeCraftError("FOREGROUND_EMPTY", "No foreground subject is available for conversion.")
 
     image = image.crop(bbox)
     mask = mask.crop(bbox)
@@ -69,7 +69,7 @@ def build_relief_voxel(
                 solid[(x, y, z)] = palette_index
 
     if not solid:
-        raise ThreeCraftError("VOXEL_EMPTY", "이미지에서 voxel을 생성하지 못했습니다.")
+        raise ThreeCraftError("VOXEL_EMPTY", "No voxels could be generated from the image.")
 
     if settings.fill_mode == FillMode.SOLID:
         selected = solid

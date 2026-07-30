@@ -24,7 +24,7 @@ export function VoxelViewer({ model, maxLayer }: VoxelViewerProps) {
         runtimeRef.current = null;
       };
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "WebGL viewer를 시작하지 못했습니다.");
+      setError(cause instanceof Error ? cause.message : "The WebGL viewer could not start.");
     }
   }, []);
 
@@ -42,14 +42,14 @@ export function VoxelViewer({ model, maxLayer }: VoxelViewerProps) {
       <div className="viewer-overlay">
         <span>{model.dimensions.width} × {model.dimensions.height} × {model.dimensions.length}</span>
         <button type="button" className="ghost-button compact" onClick={() => runtimeRef.current?.resetCamera()}>
-          카메라 초기화
+          Reset camera
         </button>
       </div>
       {error && (
         <div className="viewer-fallback" role="alert">
-          <strong>3D 미리보기를 표시할 수 없습니다.</strong>
+          <strong>The 3D preview is unavailable.</strong>
           <span>{error}</span>
-          <span>블록 수량과 schematic 다운로드는 계속 사용할 수 있습니다.</span>
+          <span>The block quantities and schematic download remain available.</span>
         </div>
       )}
     </div>

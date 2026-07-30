@@ -1,50 +1,65 @@
-# Operations와 Release Runbook
+# Operations and Release Runbook
 
-## 1. 목적
+## 1. Purpose
 
-이 문서는 개발·staging·production 환경의 실행 계약과 장애 대응, release/rollback을 정의한다. 실제 package command와 cloud resource 이름은 M0 구현 후 갱신한다. 명령이 확정되기 전 문서 예시를 그대로 production에서 실행하지 않는다.
+This document defines execution contracts, incident response, release, and rollback for development, staging, and production. Commands and cloud-resource names for the production target must be updated after their milestones are implemented. Do not execute illustrative production commands unchanged.
 
-## 2. 환경
+> [!WARNING]
+> The current repository is a loopback-only local MVP without authentication, tenant isolation, production database/queue/object storage, or a real AI provider. Do not expose it to the Internet or an untrusted LAN.
 
-### Local
+## 2. Environments
 
-- Vite web
-- Python API
-- Python worker
-- Postgres
-- Redis
-- S3-compatible local storage
-- fixture provider
-- optional local GPU adapter
+### Current local MVP
+
+- Vite Web app on `127.0.0.1:5173`;
+- Python FastAPI service on `127.0.0.1:8000`;
+- process-local bounded worker pool;
+- private `.threecraft-data/` artifact store;
+- deterministic local illustration provider or null provider;
+- deterministic CPU relief/voxel/export.
+
+### Target production-development environment
+
+- Vite Web app;
+- Python API;
+- Python worker;
+- Postgres;
+- Redis;
+- S3-compatible local storage;
+- fixture provider;
+- optional local GPU adapter.
 
 ### CI
 
-- ephemeral DB/queue/storage
-- fake deterministic provider
-- independent schematic parser
-- headless Chromium
-- scheduled GPU runner 별도
+- deterministic local/fixture provider;
+- independent schematic parser;
+- clean Python and Node installs;
+- strict TypeScript/Vite build;
+- future ephemeral database/queue/storage and headless browser;
+- separate scheduled GPU runner only after a model is selected.
 
-### Staging
+### Staging target
 
-- production과 동일 topology/권한 모델
-- 별도 account/project/bucket/key
-- 제한 quota
-- non-sensitive fixture
-- 실제 provider staging key
+- same topology and permission model as production;
+- separate account/project/bucket/keys;
+- limited quotas;
+- non-sensitive fixtures;
+- separately scoped staging provider keys.
 
-### Production
+### Production target
 
-- stateless web/API
-- CPU/GPU worker pool
-- managed 또는 HA DB/queue/storage
-- private network/least privilege
-- centralized logs/metrics/traces
-- backup/lifecycle/cost alert
+- stateless Web/API;
+- CPU/GPU worker pools;
+- managed or highly available database/queue/storage;
+- private network and least privilege;
+- centralized logs, metrics, and traces;
+- backup, lifecycle, and cost alerts.
 
-환경 간 bucket, DB, provider key를 공유하지 않는다.
+Never share buckets, databases, or provider keys between environments.
 
-## 3. Configuration category
+## 3. Configuration categories
+
+Target categories:
 
 ```text
 Application
@@ -92,11 +107,42 @@ Retention/Quota
   MAX_GPU_SECONDS
 ```
 
-실제 변수는 typed settings로 시작 시 validation한다. secret과 public config를 분리한다.
+The current local MVP uses documented `THREECRAFT_*` settings, including its data directory and image-provider selection. Validate actual variables through typed settings at startup as the production configuration grows. Keep secrets separate from public configuration.
 
-## 4. Local bootstrap 계약
+## 4. Local bootstrap contract
 
-최종 repository script가 제공해야 할 논리 명령:
+Current executable commands:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
+npm --prefix apps/web ci
+./scripts/dev.sh
+```
+
+Validation:
+
+```bash
+make check
+```
+
+Or separately:
+
+```bash
+.venv/bin/python -m pytest -q
+npm --prefix apps/web run build
+```
+
+Run services independently when needed:
+
+```bash
+.venv/bin/python -m uvicorn services.api.main:app --host 127.0.0.1 --port 8000
+npm --prefix apps/web run dev
+```
+
+The launcher uses strict ports and cleans up both children. It must not silently bind publicly or choose an unexpected port.
+
+The eventual production repository should also expose logical operations for:
 
 ```text
 bootstrap/install
@@ -114,379 +160,422 @@ build
 smoke
 ```
 
-시작 순서:
+Target startup order:
 
-1. pinned runtime 확인
-2. locked dependency install
-3. local env 생성
-4. DB/Redis/storage 시작
-5. migration
-6. private bucket/prefix 초기화
-7. API readiness
-8. fixture worker
-9. web
-10. vertical smoke
+1. Verify pinned runtimes.
+2. Install locked dependencies.
+3. Create local environment.
+4. Start database, Redis, and storage.
+5. Run migrations.
+6. Initialize private bucket/prefixes.
+7. Verify API readiness.
+8. Start fixture worker.
+9. Start Web app.
+10. Run vertical smoke.
 
-shutdown은 worker lease와 temp artifact를 정리하고 service volume을 임의 삭제하지 않는다.
+Shutdown cleans up worker leases and temporary artifacts without arbitrarily deleting service volumes.
 
-## 5. Health endpoint
+## 5. Health endpoints
 
-### API liveness
+### Current API health
 
-- process/event loop만 확인
-- dependency 장애로 무한 restart하지 않음
+`GET /api/v1/health` reports service liveness. `GET /api/v1/capabilities` separately reports route, image-provider, settings, and target capabilities. Provider unavailability does not make supplied-image conversion unavailable.
 
-### API readiness
+### Target API liveness
 
-- typed config
-- DB query
-- queue publish capability
-- storage metadata access
+- Check only process/event-loop liveness.
+- Do not create endless restarts after dependency failures.
 
-### Worker liveness
+### Target API readiness
 
-- process와 heartbeat loop
+- typed configuration;
+- database query;
+- queue publication capability;
+- storage metadata access.
 
-### Worker readiness
+### Target worker liveness
 
-- queue/storage 접근
-- temp disk
-- provider/model configuration
-- model load 또는 lazy-load 상태
-- GPU/VRAM sanity
+- process and heartbeat loop.
 
-image generation provider 장애를 upload/relief API 전체 readiness 실패로 취급하지 않고 capability health로 분리한다.
+### Target worker readiness
 
-## 6. 배포 artifact
+- queue/storage access;
+- temporary disk;
+- provider/model configuration;
+- model-load or lazy-load state;
+- GPU/VRAM sanity.
 
-- web static/container artifact
-- API container digest
-- worker CPU/GPU container digest
-- DB migration version
-- contract schema version
-- model identifier/weight checksum
-- palette content hash
-- target Minecraft/DataVersion
-- release manifest/SBOM
+Treat an image-generation provider failure as capability health, not failure of all upload/relief API readiness.
 
-runtime에 승인되지 않은 최신 model/dependency를 자동 다운로드하지 않는다.
+## 6. Deployment artifacts
 
-## 7. 배포 순서
+Target release inventory:
 
-1. release commit/tag와 immutable artifact 생성
-2. unit/integration/E2E/security scan
-3. migration backward compatibility review
-4. staging deploy
-5. fixture smoke
-6. actual provider/GPU smoke
-7. schematic parser + WorldEdit smoke
-8. dashboards/alerts 확인
-9. canary API/worker
-10. queue age/error/cost 관찰
-11. full rollout
-12. release note/known limitation 게시
+- Web static/container artifact;
+- API container digest;
+- CPU/GPU worker container digests;
+- database migration version;
+- contract-schema version;
+- model identifier/weight checksum;
+- palette content hash;
+- target Minecraft/DataVersion;
+- release manifest/SBOM.
 
-worker와 queue payload compatibility를 먼저 본다. 새로운 worker가 기존 job을 읽지 못하면 versioned queue 또는 drain 계획이 필요하다.
+Never download an unapproved “latest” model or dependency at runtime.
 
-## 8. Migration 원칙
+The current Python wheel must include package metadata and LICENSE; the Web build must be reproducible from its lockfile.
 
-- expand→migrate/backfill→contract
-- rolling deploy 중 old/new code가 공존 가능
-- destructive migration은 별도 승인/backup/rollback
-- artifact schema와 DB schema를 혼동하지 않음
-- large backfill은 online throttling
-- migration metric과 lock time 관찰
+## 7. Deployment order
 
-## 9. Smoke test
+1. Create release commit/tag and immutable artifacts.
+2. Run unit/integration/E2E/security scans appropriate to implemented scope.
+3. Review migration backward compatibility.
+4. Deploy to staging.
+5. Run fixture smoke.
+6. Run real provider/GPU smoke only when configured and approved.
+7. Run schematic parser plus actual WorldEdit smoke.
+8. Verify dashboards/alerts.
+9. Canary API/workers.
+10. Observe queue age, errors, and cost.
+11. Complete rollout.
+12. Publish release notes and known limitations.
 
-### 일반
+Check worker/queue-payload compatibility first. If new workers cannot read existing jobs, use a versioned queue or drain plan.
 
-1. valid PNG upload
-2. canonical asset ready
-3. 16축 relief conversion
-4. queued→completed event
-5. preview/BOM
-6. schematic download
-7. independent parser
-8. BOM equality
-9. invalid upload reject
-10. cross-owner deny
-11. log secret 없음
+For the current GitHub-hosted local MVP, release means a reviewed commit on a safe branch, successful Python and Web CI jobs, clean annotations, matching local/remote SHA, and no runtime artifacts in Git. It is not a production deployment.
 
-### GPU
+## 8. Migration principles
 
-- 실제 single-image reconstruction 1건
-- model/version/checksum 확인
-- duration/VRAM
-- raw/repaired mesh valid
-- 후속 job 수신
-- temp/GPU memory 정리
+- expand → migrate/backfill → contract;
+- old and new code coexist during rolling deployment;
+- destructive migrations require separate approval, backup, and rollback;
+- distinguish artifact schemas from database schemas;
+- throttle large backfills online;
+- observe migration metrics and lock time.
 
-### Minecraft
+## 9. Smoke tests
 
-- supported WorldEdit/Minecraft 환경에서 paste
-- orientation/ground/offset
-- expected block count spot check
-- unsupported block 없음
+### Current local source-to-delivery smoke
+
+1. Create a valid PNG fixture.
+2. Submit image plus prompt to `/api/v1/sources`; confirm origin `upload`.
+3. Confirm the generation provider was not needed.
+4. Submit prompt only; confirm origin `generated`, or explicit 503 with null provider.
+5. Submit invalid supplied bytes plus prompt; confirm validation failure without fallback.
+6. Create a 16- or 32-axis relief conversion.
+7. Observe queued → completed.
+8. Retrieve preview and BOM.
+9. Download schematic.
+10. Parse independently with `nbtlib`.
+11. Verify Sponge version 3, DataVersion 3700, semantic hash, and BOM equality.
+12. Confirm no secrets, absolute local paths, or user images entered tracked output.
+
+### Target production smoke
+
+1. Valid PNG upload.
+2. Canonical asset ready.
+3. 16-axis relief conversion.
+4. Queued → completed event.
+5. Preview/BOM.
+6. Schematic download.
+7. Independent parser.
+8. BOM equality.
+9. Invalid-upload rejection.
+10. Cross-owner denial.
+11. No secrets in logs.
+
+### GPU smoke
+
+- one real single-image reconstruction;
+- model/version/checksum verified;
+- duration/VRAM measured;
+- raw/repaired mesh valid;
+- next job accepted;
+- temporary/GPU memory released.
+
+Do not run or claim this smoke until a provider/model passes its ADR gates.
+
+### Minecraft smoke
+
+- paste in a supported WorldEdit/Minecraft environment;
+- verify orientation, ground, and offset;
+- spot-check expected block count;
+- verify no unsupported blocks.
+
+This remains a production compatibility backlog item.
 
 ## 10. Observability
 
 ### Logs
 
-필드:
+Fields:
 
-- timestamp/level/service/environment/release
-- request/job/attempt/stage
-- owner pseudonymous ID
-- duration/resource
-- provider/model/palette/target
-- error code/retryable
+- timestamp/level/service/environment/release;
+- request/job/attempt/stage;
+- pseudonymous owner ID;
+- duration/resources;
+- provider/model/palette/target;
+- error code/retryability.
 
-redaction:
+Redact:
 
-- API key/token/cookie
-- signed URL
-- prompt 전체 기본 제외
-- image/mesh bytes
-- 사용자 파일명 필요 이상 제외
-- absolute temp path
+- API keys, tokens, cookies;
+- signed URLs;
+- complete prompts by default;
+- image/mesh bytes;
+- unnecessary user filenames;
+- absolute temporary paths.
 
 ### Metrics
 
 API:
 
-- request rate/latency/status
-- DB pool
-- upload/download bytes
-- auth/rate limit
+- request rate/latency/status;
+- database pool;
+- upload/download bytes;
+- authentication/rate limiting.
 
 Queue/job:
 
-- queue depth/oldest age
-- state/stage count
-- success/fail/cancel/retry
-- stage duration
-- lease expiry/stale attempt
+- queue depth/oldest age;
+- state/stage counts;
+- success/fail/cancel/retry;
+- stage duration;
+- lease expiry/stale attempts.
 
 Worker/provider:
 
-- utilization/concurrency
-- CPU/RAM/GPU/VRAM
-- model load/inference
-- provider latency/rate/error/cost
-- OOM/restart
+- utilization/concurrency;
+- CPU/RAM/GPU/VRAM;
+- model load/inference;
+- provider latency/rate/error/cost;
+- OOM/restarts.
 
 Artifact/export:
 
-- storage bytes/count
-- candidate orphan
-- validation failure
-- schematic size/block count
-- download success
+- storage bytes/count;
+- candidate orphans;
+- validation failures;
+- schematic size/block count;
+- download success.
 
-Viewer client telemetry는 사용자 콘텐츠 없이 load/decode/FPS/context error를 aggregate한다.
+Aggregate viewer load/decode/FPS/context-error telemetry without user content.
 
-## 11. Alert
+## 11. Alerts
 
 Critical:
 
-- authorization/storage public exposure
-- export validation 실패 급증
-- DB unavailable/data integrity
-- secret leak signal
+- authorization or public-storage exposure;
+- sharp rise in export-validation failures;
+- database unavailable/data-integrity failure;
+- secret-leak signal.
 
 High:
 
-- oldest queue age SLO 초과
-- worker OOM/restart loop
-- provider failure spike
-- storage write failure
-- completion rate 급락
-- 비용 budget 초과
+- oldest queue age exceeds SLO;
+- worker OOM/restart loop;
+- provider-failure spike;
+- storage-write failure;
+- sharp completion-rate decline;
+- cost-budget breach.
 
 Medium:
 
-- 64 viewer performance regression
-- retention backlog
-- high retry/cancel
-- low disk/temp capacity
+- 64-axis viewer performance regression;
+- retention backlog;
+- high retry/cancel rate;
+- low disk/temporary capacity.
 
-alert는 owner, dashboard, runbook link와 severity를 포함한다.
+Every alert includes owner, dashboard, runbook link, and severity.
 
-## 12. Queue backlog runbook
+## 12. Queue-backlog runbook
 
-진단:
+Diagnose:
 
-1. queue별 depth/oldest
-2. worker readiness/replica
-3. GPU utilization/VRAM
-4. stage/model/resolution 분포
-5. provider rate limit
-6. poison job/retry loop
+1. depth/oldest age by queue;
+2. worker readiness/replicas;
+3. GPU utilization/VRAM;
+4. stage/model/resolution distribution;
+5. provider rate limits;
+6. poison jobs/retry loops.
 
-대응:
+Respond:
 
-- safe capacity 내 worker scale
-- 64/고비용 admission 제한
-- poison job 격리
-- retry storm circuit breaker
-- 사용자 status 공지
-- 예상 복구 후 admission 점진 재개
+- scale workers within safe capacity;
+- limit 64/high-cost admission;
+- isolate poison jobs;
+- open retry-storm circuit breaker;
+- publish user-facing status;
+- resume admission gradually after expected recovery.
 
-무조건 replica를 늘려 provider rate limit/DB를 더 악화시키지 않는다.
+Do not blindly add replicas when that would worsen provider or database limits.
 
 ## 13. GPU OOM runbook
 
-진단:
+Diagnose:
 
-- model/release/input resolution
-- concurrent jobs
-- 이전 job memory release
-- driver/runtime
-- input/output complexity
+- model/release/input resolution;
+- concurrent jobs;
+- memory release after previous jobs;
+- driver/runtime;
+- input/output complexity.
 
-대응:
+Respond:
 
-1. affected worker drain
-2. 동시성 감소
-3. 반복 job non-retryable 처리
-4. lower profile/relief 제안
-5. known-good worker image rollback
-6. model/resource budget 수정은 benchmark/ADR 후
+1. Drain affected worker.
+2. Reduce concurrency.
+3. Mark repeated job non-retryable.
+4. Suggest lower profile or relief.
+5. Roll back to a known-good worker image.
+6. Change model/resource budgets only after benchmark/ADR review.
 
-OOM job을 같은 설정으로 무한 retry하지 않는다.
+Never retry an OOM job indefinitely with identical settings.
 
-## 14. Provider outage runbook
+## 14. Provider-outage runbook
 
-- provider status/rate-limit 확인
-- circuit breaker open
-- 신규 해당 capability job 제한
-- queue retry storm 방지
-- upload/relief/기존 download 유지
-- 대체 provider는 결과 차이를 고지
-- 복구 후 canary 요청
-- 비용/중복 request audit
+- Check provider status/rate limits.
+- Open circuit breaker.
+- Limit new jobs requiring that capability.
+- Prevent queue retry storms.
+- Preserve uploads, relief, and existing downloads.
+- Disclose result differences before switching provider.
+- Send a canary after recovery.
+- Audit cost and duplicate requests.
 
-## 15. Storage/DB 장애
+For the current null-provider configuration, a prompt-only request returns explicit unavailability while supplied images continue to work.
+
+## 15. Storage/database failure
 
 Storage:
 
-- completed 전환 중단
-- candidate/published 상태 확인
-- partial multipart cleanup은 복구 후
-- checksum으로 손상 확인
+- stop completed transitions;
+- inspect candidate/published state;
+- defer partial multipart cleanup until recovery;
+- verify corruption by checksum.
 
-DB:
+Database:
 
-- API mutation admission 중단
-- worker가 DB lease 없이 새 stage를 실행하지 않음
-- 복구 후 lease/fencing 검사
-- backup restore는 isolated 환경에서 검증 후 결정
+- stop API mutation admission;
+- workers do not run a new stage without a database lease;
+- inspect leases/fencing after recovery;
+- decide on backup restore only after isolated validation.
 
-데이터 삭제나 hard reset은 명시적 고위험 승인 없이 수행하지 않는다.
+Do not delete data or perform a hard reset without explicit high-risk approval.
 
-## 16. Export validation incident
+For the local store, preserve the same fail-closed rule: a write or read validation failure cannot produce completed delivery.
 
-1. 해당 exporter/release의 publish 즉시 제한
-2. 이미 공개된 artifact 범위 식별
-3. model/palette/DataVersion/serializer 기록
-4. 실패 fixture와 parser report 보존
-5. known-good exporter rollback
-6. 사용자 영향/재생성 정책 결정
-7. regression test 추가
+## 16. Export-validation incident
 
-reconstruction quality issue와 format corruption을 구분한다.
+1. Immediately restrict publication by the affected exporter/release.
+2. Identify already published artifacts in scope.
+3. Record model, palette, DataVersion, and serializer.
+4. Preserve failing fixture and parser report.
+5. Roll back to a known-good exporter.
+6. Decide user impact and regeneration policy.
+7. Add a regression test.
 
-## 17. Retention과 orphan cleanup
+Distinguish reconstruction-quality issues from format corruption.
 
-cleanup 순서:
+## 17. Retention and orphan cleanup
 
-1. expiry candidate 조회
-2. active job/reference/hold 제외
-3. storage delete
-4. delete 결과 확인
-5. artifact tombstone
-6. retry/alert
+Cleanup order:
 
-정기 orphan audit:
+1. Query expired candidates.
+2. Exclude active jobs, references, and holds.
+3. Delete storage object.
+4. Verify deletion.
+5. Tombstone artifact.
+6. Retry/alert.
 
-- object without DB row
-- DB artifact without object
-- writing/candidate 장기 정체
-- expired signed upload
-- incomplete multipart
+Periodic orphan audit:
 
-삭제 전에 DB row를 완전히 없애면 orphan 추적이 어려우므로 tombstone을 유지한다.
+- object without database row;
+- database artifact without object;
+- long-stalled writing/candidate state;
+- expired signed upload;
+- incomplete multipart upload.
 
-## 18. Backup과 restore
+Keep tombstones; deleting database rows first makes orphan tracking difficult.
 
-- Postgres encrypted scheduled backup
-- point-in-time 정책
-- object version/lifecycle 또는 필요한 delivery backup
-- config/schema/model/palette manifest 보존
-- 분기별 restore drill 제안
+The local `.threecraft-data/` directory has no automated production retention policy. Treat it as private and remove it manually only when no needed job/artifact remains.
 
-restore 검증:
+## 18. Backup and restore
 
-- owner/job/artifact 관계
-- object checksum
-- published download
-- queue message는 복원 후 중복 실행되지 않음
-- deleted/tombstone privacy 정책
+Production target:
+
+- encrypted scheduled Postgres backups;
+- point-in-time policy;
+- object versions/lifecycle or required delivery backup;
+- preserved configuration/schema/model/palette manifests;
+- proposed quarterly restore drill.
+
+Restore verification:
+
+- owner/job/artifact relationships;
+- object checksums;
+- published downloads;
+- restored queue messages do not duplicate execution;
+- deleted/tombstoned privacy policy.
 
 ## 19. Rollback
 
-사전 질문:
+Preflight questions:
 
-- migration이 backward compatible한가?
-- 새 queue/artifact schema가 이전 code와 호환되는가?
-- 새 model/palette output을 이전 API가 읽는가?
-- 진행 중 job을 drain해야 하는가?
+- Is the migration backward-compatible?
+- Are new queue/artifact schemas compatible with previous code?
+- Can the previous API read new model/palette output?
+- Must active jobs drain?
 
-절차:
+Procedure:
 
-1. 신규 고위험 job admission 제한
-2. 영향/metric snapshot
-3. worker canary/전체를 known-good digest로 rollback
-4. API/web rollback
-5. incompatible queue 격리
-6. artifact validation
-7. admission 점진 재개
-8. incident timeline/postmortem
+1. Restrict new high-risk job admission.
+2. Capture impact/metric snapshot.
+3. Roll worker canaries/all workers back to known-good digests.
+4. Roll back API/Web.
+5. Isolate incompatible queues.
+6. Validate artifacts.
+7. Resume admission gradually.
+8. Produce incident timeline/postmortem.
 
-`git reset`, DB destructive down migration, storage bulk delete는 rollback 기본 수단이 아니다.
+`git reset`, destructive database down-migrations, and bulk storage deletion are not default rollback mechanisms.
+
+For repository publication, use a new corrective commit rather than rewriting already pushed history.
 
 ## 20. Release checklist
 
 ### Engineering
 
-- [ ] lint/type/unit/contract
-- [ ] integration/E2E
-- [ ] web/API/worker build
-- [ ] schema drift 없음
+- [ ] lint/type/unit/contract checks
+- [ ] integration/E2E appropriate to scope
+- [ ] Web/API/worker build
+- [ ] no schema drift
 - [ ] schematic round-trip
-- [ ] browser runtime/dispose
+- [ ] browser runtime/disposal where available
+- [ ] source-precedence CLI and HTTP smoke
+- [ ] exactly one valid `SKILL.md`
+- [ ] zero tracked non-English user-facing text
 
 ### Compatibility
 
 - [ ] target Minecraft/DataVersion
-- [ ] WorldEdit smoke
-- [ ] model/palette/export version
+- [ ] WorldEdit smoke before making production compatibility claims
+- [ ] model/palette/export versions
 - [ ] old job/artifact compatibility
 
 ### Security/privacy
 
 - [ ] dependency/license/secret scan
-- [ ] owner/IDOR
-- [ ] upload adversarial
-- [ ] private storage/signed URL
-- [ ] retention/delete
+- [ ] owner/IDOR in production
+- [ ] adversarial upload tests
+- [ ] private storage/signed URLs where applicable
+- [ ] retention/deletion
 - [ ] provider data policy
+- [ ] no arbitrary URL fetch or external user-image transmission
 
 ### Operations
 
-- [ ] staging smoke
-- [ ] dashboard/alert
+- [ ] staging smoke for production releases
+- [ ] dashboards/alerts
 - [ ] capacity/cost
 - [ ] backup/restore status
 - [ ] rollback digest/rehearsal
@@ -494,25 +583,27 @@ restore 검증:
 
 ### Product
 
-- [ ] known limitation
+- [ ] known limitations
 - [ ] input guide
-- [ ] progress/error/remedy
+- [ ] progress/errors/remedies
 - [ ] import guide
-- [ ] target version 표시
-- [ ] 보존/외부 provider 고지
+- [ ] target version displayed
+- [ ] retention/external-provider disclosure
+- [ ] supplied-image precedence clearly displayed
 
-## 21. Release 후 관찰
+## 21. Post-release observation
 
-최소 canary/초기 기간에 비교:
+During the canary/initial period compare:
 
-- completion/export validation
-- queue age/stage latency
-- OOM/provider error
-- job당 비용
-- retry/cancel
-- 32/64 사용 비율
-- viewer error/FPS
-- download/import support ticket
-- storage 성장/cleanup
+- completion and export-validation rates;
+- queue age/stage latency;
+- OOM/provider errors;
+- cost per job;
+- retry/cancel rates;
+- 32/64 usage;
+- viewer errors/FPS;
+- download/import support tickets;
+- storage growth/cleanup;
+- unexpected generated origin on requests that included image bytes.
 
-기준을 벗어나면 feature flag/admission으로 64, 특정 model/provider 또는 image generation을 제한할 수 있어야 한다.
+When thresholds are exceeded, feature flags/admission controls must be able to restrict 64-axis output, a specific model/provider, or image generation without disabling supplied-image relief conversion.

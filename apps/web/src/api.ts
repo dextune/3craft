@@ -22,7 +22,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       | null;
     throw new ApiError(
       payload?.error?.code ?? `HTTP_${response.status}`,
-      payload?.error?.message ?? `요청이 실패했습니다 (${response.status}).`,
+      payload?.error?.message ?? `Request failed (${response.status}).`,
       payload?.error?.remedies ?? [],
     );
   }
@@ -33,18 +33,11 @@ export function getCapabilities(): Promise<Capabilities> {
   return request<Capabilities>("/api/v1/capabilities");
 }
 
-export function uploadAsset(file: File): Promise<AssetSummary> {
+export function prepareAsset(file: File | null, prompt: string): Promise<AssetSummary> {
   const body = new FormData();
-  body.append("file", file);
-  return request<AssetSummary>("/api/v1/assets", { method: "POST", body });
-}
-
-export function generateAsset(prompt: string): Promise<AssetSummary> {
-  return request<AssetSummary>("/api/v1/image-generations", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }),
-  });
+  if (file) body.append("file", file);
+  if (prompt.trim()) body.append("prompt", prompt.trim());
+  return request<AssetSummary>("/api/v1/sources", { method: "POST", body });
 }
 
 export function assetImageUrl(assetId: string): string {

@@ -1,130 +1,167 @@
-# 3Craft 구현 상태 및 검증 증거
+# 3Craft Implementation Status and Validation Evidence
 
-> 기준일: 2026-07-30
-> 구현 판정: **실행 가능한 end-to-end local MVP vertical slice 완료**
-> release 판정: **production/beta release 아님**
+> Baseline date: 2026-07-30
+> Implementation assessment: **Executable end-to-end local MVP vertical slice complete**
+> Release assessment: **Not a production or beta release**
 
-이 문서는 [`plan/README.md`](plan/README.md)의 목표와 현재 코드를 연결한다. 계획의 모든 production milestone을 완료했다고 주장하지 않으며, 이번 구현에서 실제로 실행·검증한 범위와 아직 검증하지 않은 범위를 분리한다.
+This document maps the goals in [`plan/README.md`](plan/README.md) to current code. It does not claim completion of every production milestone. It distinguishes implemented and exercised local behavior from unimplemented or unverified production scope.
 
-## 1. 완료한 local vertical slice
+## 1. Completed local vertical slice
 
 ```text
-PNG/JPEG/WebP upload 또는 deterministic-dev 이미지 생성
-  → SHA-256 provenance와 evidence class
-  → canonical RGBA PNG, matte/depth SensePack
+supplied PNG/JPEG/WebP, when present
+otherwise deterministic-dev generated image from prompt/default
+  → SHA-256 provenance and evidence class
+  → canonical RGBA PNG + matte/depth SensePack
   → route-aware fail-closed sufficiency
   → deterministic 2.5D relief
-  → 16/32/64 surface/hollow/solid voxel
-  → versioned safe full-cube palette와 BOM
+  → 16/32/64 surface/hollow/solid voxels
+  → versioned safe full-cube palette + BOM
   → Sponge Schematic v3 / DataVersion 3700
   → semantic round-trip delivery gates
-  → local async job API
-  → React/Three.js preview와 `.schem` download
+  → local asynchronous job API
+  → React/Three.js preview + `.schem` download
 ```
 
-구현 경계는 다음과 같다.
+Implemented boundaries:
 
-| 영역 | 현재 구현 |
+| Area | Current implementation |
 |---|---|
-| 입력 | PNG/JPEG/WebP magic, decode, MIME, byte/pixel/frame 제한, EXIF orientation, canonical PNG |
-| 증거 | upload=`observed`, generated=`design-intent`; generated/edited를 observed로 승격하지 못하는 invariant |
-| Sense/sufficiency | alpha 또는 corner-background matte, depth proxy, diagnostics, `continue/ask/abort` |
-| 생성 | 외부 호출 없는 `deterministic-dev`와 fail-closed `null` provider |
-| 형상 | 결정적 2.5D relief; 실제 single-image AI mesh는 없음 |
-| voxel | 최대 축 16/32/64, surface/hollow/solid, semantic hash |
-| palette/export | `java-safe-v1` concrete palette, Lab/CIE76 mapping, BOM, gzip NBT Sponge v3 |
-| 검증 | 자체 NBT reader와 독립 `nbtlib==2.0.4`, DataVersion/semantic/BOM gate |
-| backend | FastAPI, process-local `ThreadPoolExecutor`, idempotency, polling/cancel, private local artifacts |
-| frontend | React 19, strict TypeScript, Vite, lazy Three.js viewer, palette별 `InstancedMesh`, layer control |
-| 실행 | CLI와 loopback-only API/Web launcher; runtime directory `0700`, files `0600` |
+| Source selection | Supplied bytes always win; generate only when bytes are absent; invalid supplied bytes never fall back |
+| Input | PNG/JPEG/WebP magic, decode, MIME, byte/pixel/frame limits, EXIF orientation, canonical PNG |
+| Evidence | upload=`observed`, generated=`design-intent`; generated/edited cannot be promoted to observed |
+| Sense/sufficiency | Alpha or corner-background matte, depth proxy, diagnostics, `continue/ask/abort` |
+| Generation | Local-only `deterministic-dev` procedural illustration and fail-closed `null` provider |
+| Form | Deterministic 2.5D relief; no real single-image AI mesh |
+| Voxel | Maximum axis 16/32/64, surface/hollow/solid, semantic hash |
+| Palette/export | `java-safe-v1` concrete palette, Lab/CIE76 mapping, BOM, gzip NBT Sponge v3 |
+| Validation | Built-in NBT reader plus independent `nbtlib==2.0.4`, DataVersion/semantic/BOM gates |
+| Backend | FastAPI, process-local `ThreadPoolExecutor`, idempotency, polling/cancel, private local artifacts |
+| Frontend | React 19, strict TypeScript, Vite, lazy Three.js viewer, palette-grouped `InstancedMesh`, layer control |
+| CLI | Image-first `build`, explicit `convert`/`generate`, loopback `serve` |
+| Agent workflow | Root OpenAI/Agent Skills-compatible `SKILL.md` with local-only fail-closed instructions |
+| Runtime | Loopback-only API/Web launcher; runtime directories `0700`, files `0600` |
 
-## 2. 계획 milestone 매핑
+### 1.1 Source-resolution contract
 
-상태는 계획 milestone 전체가 아니라 현재 local adapter에 대한 이행 정도다.
+`ThreeCraftPipeline.resolve_source`, `POST /api/v1/sources`, `threecraft build`, and the unified Web form share these invariants:
 
-| Milestone | 상태 | 완료한 부분 | 남은 핵심 항목 |
+1. `image_data is not None` always selects upload/canonicalization, even if a prompt exists.
+2. `None` means no image; `b""` means an invalid supplied image.
+3. Invalid/corrupt/unsupported supplied input reports a validation failure and never invokes generation.
+4. A nonblank prompt is used only without an image; blank or omitted prompts use a deterministic documented default.
+5. `NullImageProvider` still permits supplied-image conversion and returns 503 only for generation fallback.
+6. No arbitrary URL is fetched, and no user image is transmitted to an external provider.
+
+Legacy `/api/v1/assets`, `/api/v1/image-generations`, `convert`, and `generate` interfaces remain available for explicit workflows.
+
+## 2. Planning-milestone mapping
+
+Status describes progress of the current local adapter, not completion of each entire production milestone.
+
+| Milestone | Status | Completed portion | Principal remaining work |
 |---|---|---|---|
-| M0 Bootstrap | 부분 완료 | Python/Node skeleton, exact direct dependencies, npm lockfile, test/build scripts, Java 1.20.4/DataVersion 3700 결정 | Postgres/Redis/S3 local stack, generated contract package, Accepted ADR/inventory |
-| M1 Deterministic slice | local 완료 | provenance→SensePack→relief→voxel→Sponge v3→parser→viewer, deterministic hash, 외부 AI/GPU 불필요 | 실제 browser visual golden/capture |
-| M2 Intake/sufficiency | local 부분 완료 | upload/generated 공통 contract, canonicalization, private filesystem, heuristic matte/depth, fail-closed sufficiency | signed upload, owner scope, production segmentation/provider, retention |
-| M3 Reconstruction model | 미구현 | relief fallback과 provider boundary만 존재 | model/license/VRAM corpus spike, mesh ingest/repair, primary/fallback ADR |
-| M4 Voxel/export | local 부분 완료 | 16/32/64×3 modes, safe palette, BOM JSON, Sponge v3, semantic delivery gates | binary/RLE TS codec, CSV, morphology/dithering, 실제 WorldEdit matrix |
-| M5 Durable jobs | local adapter만 완료 | state/progress, request hash/idempotency, terminal persistence, safe download gate, polling/cancel | DB/outbox/Redis, lease/fencing/recovery, SSE, auth, retention, observability |
-| M6 Product UI/viewer | local 부분 완료 | upload/generate, sufficiency, settings, polling, viewer/BOM/download, instancing, layer/camera, dispose/fallback | Web Worker/binary codec, persisted reconnect, canonical capture, browser/FPS matrix |
-| M7 Security/operations | 미구현 | loopback binding, CORS allowlist, input/path limits, private permissions만 적용 | auth/CSRF/IDOR/quota/sandbox, containers/staging, alerts/backup/rollback |
-| M8 Beta hardening | 미구현 | local automated regression과 한 fixture benchmark만 존재 | full corpus/golden/browser/Minecraft/load/incident/release matrix |
+| M0 Bootstrap | Partially complete | Python/Node skeleton, exact direct dependencies, npm lockfile, test/build scripts, Java 1.20.4/DataVersion 3700 decision, English repository documentation | Postgres/Redis/S3 local stack, generated contract package, remaining Accepted ADRs |
+| M1 Deterministic slice | Local complete | Provenance → SensePack → relief → voxel → Sponge v3 → parser → viewer, deterministic hashes, no AI/GPU | Browser visual golden/capture |
+| M2 Intake/sufficiency | Local partially complete | Unified image-first source contract, canonicalization, private filesystem, heuristic matte/depth, fail-closed sufficiency | Signed upload, owner scope, production segmentation/provider, retention |
+| M3 Reconstruction model | Not implemented | Relief baseline and provider boundaries only | Model/license/VRAM corpus spike, mesh intake/repair, primary/fallback ADR |
+| M4 Voxel/export | Local partially complete | 16/32/64 × three modes, safe palette, BOM JSON, Sponge v3, semantic gates | Binary/RLE TypeScript codec, CSV, broader morphology/dithering, actual WorldEdit matrix |
+| M5 Durable jobs | Local adapter only | State/progress, request hash/idempotency, terminal persistence, safe download gate, polling/cancel | Database/outbox/Redis, leases/fencing/recovery, SSE, authentication, retention, observability |
+| M6 Product UI/viewer | Local partially complete | Unified source form, sufficiency, settings, polling, viewer/BOM/download, instancing, layers/camera, disposal/fallback | Web Worker/binary codec, persisted reconnect, canonical capture, browser/FPS/accessibility matrix |
+| M7 Security/operations | Not implemented | Loopback binding, CORS allowlist, input/path limits, private permissions | Auth/CSRF/IDOR/quota/sandbox, containers/staging, alerts/backup/rollback |
+| M8 Beta hardening | Not implemented | Local automated regression and one fixture benchmark | Full corpus/golden/browser/Minecraft/load/incident/release matrix |
 
-## 3. 검증 증거
+## 3. Validation evidence
 
-### 3.1 Python과 API
+### 3.1 Python, API, and CLI
 
-최종 전체 실행:
+The image-first implementation added four tests to the previous 29-test baseline, for a total of **33 Python tests**. The focused source-selection set produced:
 
 ```text
-.............................                                            [100%]
-29 passed
+...........                                                              [100%]
+11 passed
 ```
 
-검증 범위:
+The full release validation after the English conversion produced:
 
-- canonical JSON/hash, evidence invariant와 settings validation
-- corrupt/MIME mismatch/tiny/empty image의 fail-closed 처리
-- 16/32/64 및 surface/hollow/solid 의미와 결정성
-- VarInt 경계, Sponge v3 deterministic writer와 손상 입력
-- 자체 reader와 독립 `nbtlib` semantic parse
-- delivery gate와 BOM/semantic hash 일치
-- job completion/failure persistence, idempotency conflict, missing asset 즉시 거절
-- API upload/generation/conversion/poll/artifact와 private response header
-- null provider 503, malformed ID, path escape, filesystem permission
-- CLI generate→convert→independent schematic parse
+```text
+.................................                                        [100%]
+33 passed, 1 third-party deprecation warning
+```
 
-일반 isolated venv를 임시로 새로 만든 뒤 `pip install -e '.[dev]'`, console entrypoint, 동일 29 tests도 재현했다. 현재 유일한 warning은 Starlette 1.3.1이 기존 `httpx` TestClient backend 대신 `httpx2` 설치를 권고하는 third-party deprecation이다. 제품 코드 warning이나 test failure는 아니다.
+Covered behavior includes:
+
+- canonical JSON/hashes, evidence invariants, and settings validation;
+- supplied-image precedence with prompt present;
+- prompt/default generation only without image;
+- no fallback after empty/corrupt supplied bytes;
+- null-provider upload success and prompt-only 503;
+- corrupt, MIME-mismatched, tiny, and empty-image fail-closed behavior;
+- 16/32/64 and surface/hollow/solid semantics and determinism;
+- VarInt boundaries, deterministic Sponge v3 writer, and corrupt input;
+- built-in reader and independent `nbtlib` semantic parse;
+- delivery gates and BOM/semantic-hash equality;
+- job completion/failure persistence, idempotency conflicts, and immediate missing-asset rejection;
+- API source/upload/generation/conversion/poll/artifact paths and private response headers;
+- malformed IDs, path escape, filesystem permissions;
+- CLI image-first and prompt-only builds through schematic output.
+
+The only known test warning is a third-party Starlette TestClient deprecation recommending its newer HTTP backend. It is not a product-code warning or test failure.
 
 ### 3.2 Frontend
 
-lockfile 기반 clean install과 strict build:
+The unified English image-first flow passes a clean lockfile install, strict TypeScript checking, Vite production build, and runtime dependency audit:
 
 ```text
-npm ci: added 39 packages
-TypeScript: tsc --noEmit 성공
-Vite 8.2.0: 23 modules transformed
-initial app JS: 203.12 kB (gzip 64.57 kB)
-lazy VoxelViewer JS: 551.71 kB (gzip 138.02 kB)
-npm audit --omit=dev: found 0 vulnerabilities
+npm ci: added 39 packages; audited 40 packages
+initial app JavaScript: 202.41 kB (gzip 64.02 kB)
+lazy VoxelViewer JavaScript: 551.65 kB (gzip 137.84 kB)
+npm audit --omit=dev: 0 vulnerabilities
 ```
 
-Three.js chunk는 결과가 생길 때 `React.lazy`로 로드된다. 실제 GPU별 렌더 품질/FPS는 이 검증에 포함되지 않았으며 typecheck, production build, lifecycle 정적 감사까지만 완료했다.
+The Three.js chunk loads through `React.lazy` only when a result exists. This build validates types and production bundling, not GPU-specific visual quality or FPS. Those browser/hardware gates remain explicit backlog.
 
-### 3.3 실제 process/HTTP E2E
+### 3.3 Real process/HTTP and CLI E2E
 
-`./scripts/dev.sh`로 Uvicorn과 Vite를 실제 실행해 다음을 확인했다.
+The original local smoke ran Uvicorn and Vite through `./scripts/dev.sh` and exercised:
 
 ```text
 deterministic generation → canonical source image
-→ 16-axis hollow conversion → async polling completed
+→ 16-axis hollow conversion → asynchronous polling completed
 → preview/BOM/schematic download → independent nbtlib parse
 ```
 
-관찰값:
+Observed fixture values:
 
-| 항목 | 결과 |
+| Item | Result |
 |---|---:|
-| dimensions | 11×16×4 |
-| occupied blocks | 265 |
-| block types | 9 |
+| Dimensions | 11×16×4 |
+| Occupied blocks | 265 |
+| Block types | 9 |
 | `.schem` bytes | 547 |
 | Schematic version | 3 |
 | DataVersion | 3700 |
-| preview/schematic privacy | `Cache-Control: private, no-store`, `nosniff` |
+| Preview/schematic privacy | `Cache-Control: private, no-store`, `nosniff` |
 | Vite binding | `127.0.0.1:5173`, strict port |
-| Web root | HTTP 200, React root 확인 |
-| launcher 종료 | 5173/8000 listener와 child process 모두 해제 |
+| Web root | HTTP 200 with React root |
+| Launcher shutdown | Both listeners and child processes released |
 
-설치된 `threecraft` executable로 `--help`, nested output generation, conversion, `serve`, custom `--data-dir` 적용과 `0700` mode도 별도로 통과했다.
+The final release validation also exercised the installed CLI and a real loopback Uvicorn process:
+
+| Path | Observed result |
+|---|---|
+| CLI image + prompt | `sourceOrigin=upload`, 408 occupied, 4 block types |
+| CLI prompt only | `sourceOrigin=generated`, 114 occupied, 7 block types |
+| HTTP image + prompt | `201`, upload/observed; supplied file remained authoritative |
+| HTTP prompt only | `201`, generated/design-intent via `deterministic-dev` |
+| HTTP invalid image + prompt | `400 IMAGE_DECODE_FAILED`; fallback not used |
+| HTTP upload conversion | completed, 440 occupied, 3 block types |
+
+Both CLI schematics and the HTTP schematic passed built-in semantic checks and independent `nbtlib` parsing as Sponge version 3/DataVersion 3700. HTTP artifacts retained private/no-store/nosniff headers, and the semantic hash matched the BOM and decoded model.
 
 ### 3.4 Baseline benchmark
 
-환경: Python 3.12.3, Linux 6.8 x86_64, logical CPU 16. `tracemalloc`을 켠 단일 deterministic fixture의 local diagnostic baseline이며 SLA가 아니다.
+Environment: Python 3.12.3, Linux 6.8 x86_64, 16 logical CPUs. This is a local diagnostic from one deterministic fixture with `tracemalloc`, not an SLA.
 
 | Axis | Fill | Time | Python peak | Blocks | Schematic |
 |---:|---|---:|---:|---:|---:|
@@ -138,52 +175,57 @@ deterministic generation → canonical source image
 | 64 | hollow | 1,244.03 ms | 6.14 MiB | 4,961 | 1,944 B |
 | 64 | solid | 3,727.19 ms | 10.24 MiB | 20,383 | 1,726 B |
 
-9개 조합 모두 다섯 delivery gate가 `true`였고 worker OOM은 없었다. 이 수치는 fixture·hardware별 benchmark corpus를 대체하지 않는다.
+All nine combinations passed the five delivery gates without worker OOM. This does not replace a fixture/hardware benchmark corpus.
 
-## 4. 자체 감사에서 발견하고 수정한 항목
+## 4. Issues found and fixed by local audit
 
-이번 검증은 single-agent 직접 감사로 진행했으며 multi-agent 또는 독립 reviewer 검토는 포함하지 않았다. 대신 source-scoped 위험 패턴 검색, 직접 lifecycle/API audit, clean install과 실제 process smoke를 수행했다.
+The audit was conducted directly by one agent; it did not include an independent reviewer. It combined source-scoped risk searches, lifecycle/API review, clean installation, and process smoke tests.
 
-- Vite `0.0.0.0` LAN 노출 → loopback-only
-- port 점유 시 5174로 silent fallback → `--strictPort`
-- npm parent 종료 뒤 orphan Vite process → Vite process 직접 관리와 종료 검증
-- direct Vite 실행 root 404 → `apps/web` root 명시
-- `GridHelper`와 per-rebuild `InstancedMesh` dispose 누락 → 명시적 dispose
-- API module import 시 app/job manager 중복 생성 → entrypoint에서 한 번만 factory 호출
-- 존재하지 않는 source asset이 job 생성 뒤 실패 → enqueue 전 동기 404
-- 기존 artifact root가 permissive mode일 수 있음 → startup 시 `0700` 강제
-- 예상 밖 worker exception traceback 유실 → server-side exception logging
-- preview/BOM/schematic privacy header 부재 → private/no-store/nosniff
+- Vite bound to `0.0.0.0` → loopback only.
+- Occupied port silently selected 5174 → strict port.
+- Parent npm exit left an orphan Vite process → direct process ownership and verified cleanup.
+- Direct Vite execution used the wrong root → explicit `apps/web` root.
+- `GridHelper` and per-rebuild `InstancedMesh` resources leaked → explicit disposal.
+- API module import created duplicate apps/job managers → factory called once from the entry point.
+- Missing source asset failed only after job creation → synchronous 404 before enqueue.
+- Existing artifact root could retain permissive mode → force `0700` on startup.
+- Unexpected worker exceptions lost tracebacks → server-side exception logging.
+- Preview/BOM/schematic lacked privacy headers → private/no-store/nosniff.
+- Separate source tabs allowed ambiguous intent → one source resolver with explicit file precedence.
+- Invalid supplied content could be mistaken for absence in future interfaces → explicit `None` versus empty-bytes contract and regression tests.
 
-애플리케이션 Python/TypeScript source에서 TODO/FIXME, 동적 `eval`/`exec`, shell execution, DOM injection, credential storage 패턴은 발견되지 않았다. 이는 전문 penetration test나 독립 보안 감사를 대체하지 않는다.
+No application Python/TypeScript source pattern was found for TODO/FIXME, dynamic `eval`/`exec`, shell execution, DOM injection, or credential storage. This does not replace professional penetration testing or independent security review.
 
-## 5. 통과한 local delivery gate
+## 5. Local delivery gates that pass
 
-- 입력 decode/canonicalization/provenance/sufficiency가 성공해야 conversion 가능
-- 지원 해상도와 fill mode만 계약에서 허용
-- palette index 0은 air이며 occupied block에 사용할 수 없음
-- 좌표 bounds와 semantic hash invariant 검증
-- Sponge root/version/DataVersion/palette/VarInt/index order parse
-- writer→reader semantic hash와 BOM 일치
-- 모든 gate가 통과한 completed job만 artifact download 가능
-- malformed identifier/path escape 거절
-- generated asset을 observed evidence로 표시하지 않음
+- Conversion requires successful decode, canonicalization, provenance, and sufficiency.
+- Supplied bytes take precedence in pipeline, API, CLI, Web, and skill instructions.
+- Invalid supplied content cannot trigger generated fallback.
+- Contracts allow only supported resolutions and fill modes.
+- Palette index 0 is air and cannot represent an occupied block.
+- Coordinate bounds and semantic-hash invariants are validated.
+- Sponge root/version/DataVersion/palette/VarInt/index order parse successfully.
+- Writer → reader semantic hash and BOM agree.
+- Only completed jobs whose gates pass expose artifacts.
+- Malformed identifiers and path escape are rejected.
+- Generated assets cannot be labeled observed.
+- Agent workflow remains local, rejects arbitrary URL fetching, and returns only validated delivery artifacts.
 
-## 6. 아직 완료하지 않은 release gate
+## 6. Release gates not completed
 
-다음 항목이 남아 있으므로 production readiness나 계획 전체 완료로 해석하면 안 된다.
+The following remain, so this repository must not be interpreted as production-ready or as completion of the full plan:
 
-1. 실제 AI image generation 및 single-image/multi-view mesh reconstruction
-2. model license/data policy, 20~24개 corpus, VRAM/quality benchmark
-3. Postgres/Redis/S3, lease/fencing/retry/recovery와 multi-process durability
-4. auth, tenant owner scope, signed upload/download, quota/rate/retention
-5. SSE, binary voxel codec, Web Worker와 persisted reconnect
-6. 실제 browser/WebGL GPU·접근성·FPS·leak 자동화 matrix
-7. 실제 Minecraft Java 1.20.4 + WorldEdit 수동 import matrix
-8. production containers, staging, observability, backup/restore/rollback/load/incident drill
-9. 독립 code/security review와 release sign-off
+1. Real AI image generation and single-image/multi-view mesh reconstruction.
+2. Model license/data-policy review, 20–24-input corpus, and VRAM/quality benchmark.
+3. Postgres/Redis/S3, leases/fencing/retry/recovery, and multi-process durability.
+4. Authentication, tenant ownership, signed upload/download, quota/rate limits, and retention.
+5. SSE, binary voxel codec, Web Worker, and persisted reconnect.
+6. Automated real-browser/WebGL GPU, accessibility, FPS, and leak matrix.
+7. Manual Minecraft Java 1.20.4 + WorldEdit import matrix.
+8. Production containers, staging, observability, backup/restore, rollback, load, and incident drills.
+9. Independent code/security review and release sign-off.
 
-## 7. 재현 명령
+## 7. Reproduction commands
 
 ```bash
 python3 -m venv .venv
@@ -193,9 +235,33 @@ make check
 ./scripts/dev.sh
 ```
 
-CLI smoke:
+Preferred image-first CLI smoke:
 
 ```bash
-.venv/bin/threecraft generate "blue crystal guardian" --out generated.png
-.venv/bin/threecraft convert generated.png --max-axis 16 --fill hollow --out output
+.venv/bin/threecraft build \
+  --image provided.png \
+  --prompt "this prompt is ignored because an image exists" \
+  --max-axis 16 \
+  --fill hollow \
+  --out output-from-image
+
+.venv/bin/threecraft build \
+  --prompt "blue crystal guardian" \
+  --max-axis 16 \
+  --fill hollow \
+  --out output-from-prompt
 ```
+
+Each output contains `model.schem`, `preview.json`, `blocks.json`, and `delivery.json`. The CLI result identifies `sourceOrigin` so precedence is observable.
+
+## 8. ChatGPT/OpenAI skill
+
+The repository root contains exactly one [`SKILL.md`](../SKILL.md) with required `name` and `description` frontmatter. It instructs an agent to:
+
+- select an explicitly referenced or most relevant supplied PNG/JPEG/WebP;
+- use generation only when no supported image exists;
+- fail closed rather than replacing invalid supplied input;
+- keep user files local and avoid arbitrary URL fetches;
+- run `threecraft build` in a fresh output directory;
+- verify delivery status, every gate, BOM totals, semantic hash, and output paths;
+- report the deterministic 2.5D limitation accurately.

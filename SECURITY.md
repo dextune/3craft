@@ -1,49 +1,49 @@
-# 3Craft 보안 정책
+# 3Craft Security Policy
 
-## 지원 범위
+## Supported scope
 
-3Craft는 현재 인증이나 tenant isolation이 없는 **local MVP**이며 production service가 아닙니다.
+3Craft is currently a **local MVP** without authentication or tenant isolation. It is not a production service.
 
-| 대상 | 보안 수정 |
+| Target | Security fixes |
 |---|---|
-| GitHub default branch의 최신 코드 | 지원 |
-| 이전 commit, fork 또는 변경된 배포 | 지원하지 않음 |
-| 공개 release artifact | 아직 제공하지 않음 |
+| Latest code on the GitHub default branch | Supported |
+| Earlier commits, forks, or modified deployments | Not supported |
+| Public release artifacts | Not yet provided |
 
-## 배포 주의사항
+## Deployment precautions
 
-- API와 Vite는 기본 설정처럼 `127.0.0.1`에만 bind하세요.
-- 현재 API를 인터넷, 공용 LAN 또는 신뢰할 수 없는 multi-user 환경에 노출하지 마세요.
-- production 배포 전 auth, owner scope, CSRF/IDOR 방어, rate limit, quota, retention 및 object storage authorization이 필요합니다.
-- `.threecraft-data/`와 업로드 이미지는 private data로 취급하고 공유 저장소에 commit하지 마세요.
-- 실제 provider adapter를 구현하기 전에는 `THREECRAFT_IMAGE_PROVIDER=null`을 사용하세요.
+- Bind the API and Vite only to `127.0.0.1`, as configured by default.
+- Do not expose the current API to the Internet, a public LAN, or an untrusted multi-user environment.
+- Production deployment requires authentication, owner scoping, CSRF and IDOR defenses, rate limits, quotas, retention controls, and object-storage authorization.
+- Treat `.threecraft-data/` and uploaded images as private data. Never commit them to a shared repository.
+- Use `THREECRAFT_IMAGE_PROVIDER=null` until a real provider adapter has been implemented and reviewed. Supplied-image conversion remains available when generation is disabled.
 
-구현된 방어와 남은 release gate는 [구현 상태 문서](docs/implementation-status.md)에 기록되어 있습니다.
+Implemented defenses and outstanding release gates are recorded in the [implementation status](docs/implementation-status.md).
 
-## 취약점 보고
+## Reporting a vulnerability
 
-취약점은 공개 Issue에 작성하지 마세요. 저장소의 **Security → Report a vulnerability**에서 private security advisory를 생성해 주세요.
+Do not report vulnerabilities in a public issue. Open a private security advisory under **Security → Report a vulnerability** in this repository.
 
-보고서에는 가능한 범위에서 다음을 포함해 주세요.
+Include as much of the following as practical:
 
-- 영향을 받는 commit 또는 버전
-- 재현 조건과 최소 단계
-- 기대 동작과 실제 동작
-- 영향 범위와 공격 전제
-- 가능한 완화책
+- affected commit or version;
+- reproduction conditions and minimal steps;
+- expected and actual behavior;
+- impact and attack prerequisites;
+- possible mitigations.
 
-실제 secret, 개인 이미지 또는 개인정보를 첨부하지 말고 안전한 fixture로 대체하세요. 보고 내용은 수정과 공개 시점이 합의될 때까지 비공개로 다룹니다. 현재는 응답 SLA를 보장하지 않지만 확인 가능한 보고는 우선 검토합니다.
+Do not attach real secrets, private images, or personal information; use safe fixtures instead. Reports remain private until a fix and disclosure date are agreed. We do not currently guarantee a response SLA, but verifiable reports receive priority review.
 
-## 주요 관심 영역
+## Areas of particular concern
 
-특히 다음 문제를 중요하게 다룹니다.
+We treat the following issues as especially important:
 
-- image parser/decompression bomb 또는 validation bypass
-- artifact ID/path traversal과 private file disclosure
-- incomplete job artifact의 조기 공개
-- generated evidence를 observed로 오분류하는 provenance bypass
-- schematic parser/writer의 bounds 또는 VarInt 처리 오류
-- Vite proxy나 CORS를 통한 의도하지 않은 network exposure
-- dependency supply-chain 문제
+- image parser/decompression bombs or validation bypasses;
+- artifact-ID/path traversal and private-file disclosure;
+- early exposure of incomplete job artifacts;
+- provenance bypasses that misclassify generated evidence as observed;
+- bounds or VarInt errors in the schematic parser/writer;
+- unintended network exposure through the Vite proxy or CORS;
+- dependency supply-chain issues.
 
-일반 bug와 feature 요청은 GitHub Issue template을 사용해 주세요.
+Use the GitHub issue templates for ordinary bugs and feature requests.

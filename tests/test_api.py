@@ -89,6 +89,11 @@ def test_api_generation_and_invalid_upload(tmp_path) -> None:
         assert generated.json()["asset"]["evidenceClass"] == "design-intent"
         assert generated.json()["asset"]["provenance"]["provider"] == "deterministic-dev"
 
+        fallback = client.post("/api/v1/sources", data={"prompt": "fallback crystal"})
+        assert fallback.status_code == 201
+        assert fallback.json()["asset"]["origin"] == "generated"
+        assert fallback.json()["asset"]["provenance"]["prompt"] == "fallback crystal"
+
         invalid = client.post(
             "/api/v1/assets",
             files={"file": ("bad.png", b"not-an-image", "image/png")},
@@ -97,7 +102,7 @@ def test_api_generation_and_invalid_upload(tmp_path) -> None:
         assert invalid.json()["error"]["code"] == "IMAGE_DECODE_FAILED"
 
 
-def test_api_null_provider_is_fail_closed(tmp_path) -> None:
+def test_api_null_provider_is_fail_closed(tmp_path, object_png: bytes) -> None:
     app = create_app(data_dir=tmp_path / "data", image_provider=NullImageProvider())
     with TestClient(app) as client:
         capabilities = client.get("/api/v1/capabilities")
@@ -107,6 +112,18 @@ def test_api_null_provider_is_fail_closed(tmp_path) -> None:
             "available": False,
             "notice": "No image generation provider configured",
         }
+        preferred = client.post(
+            "/api/v1/sources",
+            data={"prompt": "must not be used"},
+            files={"file": ("provided.png", object_png, "image/png")},
+        )
+        assert preferred.status_code == 201
+        assert preferred.json()["asset"]["origin"] == "upload"
+        assert preferred.json()["asset"]["evidenceClass"] == "observed"
+
         generated = client.post("/api/v1/image-generations", json={"prompt": "unused"})
         assert generated.status_code == 503
         assert generated.json()["error"]["code"] == "IMAGE_PROVIDER_UNAVAILABLE"
+        fallback = client.post("/api/v1/sources", data={"prompt": "unavailable"})
+        assert fallback.status_code == 503
+        assert fallback.json()["error"]["code"] == "IMAGE_PROVIDER_UNAVAILABLE"

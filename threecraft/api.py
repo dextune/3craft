@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
-from fastapi import FastAPI, File, Header, Request, UploadFile
+from fastapi import FastAPI, File, Form, Header, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +25,13 @@ _PRIVATE_ARTIFACT_HEADERS = {
     "Cache-Control": "private, no-store",
     "X-Content-Type-Options": "nosniff",
 }
+
+
+async def _read_upload(file: UploadFile) -> bytes:
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise ThreeCraftError("IMAGE_TOO_LARGE", "Image files must be 10 MB or smaller.", status_code=413)
+    return data
 
 
 class ImageGenerationRequest(BaseModel):
@@ -109,11 +116,22 @@ def create_app(
             "target": {"edition": "java", "minecraftVersion": "1.20.4", "dataVersion": 3700},
         }
 
+    @app.post("/api/v1/sources", status_code=201)
+    async def resolve_source(
+        file: UploadFile | None = File(default=None),
+        prompt: str | None = Form(default=None),
+    ) -> dict[str, object]:
+        data = await _read_upload(file) if file is not None else None
+        return pipeline.resolve_source(
+            image_data=data,
+            prompt=prompt,
+            file_name=file.filename if file is not None else None,
+            content_type=file.content_type if file is not None else None,
+        )
+
     @app.post("/api/v1/assets", status_code=201)
     async def upload_asset(file: UploadFile = File(...)) -> dict[str, object]:
-        data = await file.read(MAX_UPLOAD_BYTES + 1)
-        if len(data) > MAX_UPLOAD_BYTES:
-            raise ThreeCraftError("IMAGE_TOO_LARGE", "이미지 파일은 10MB 이하여야 합니다.", status_code=413)
+        data = await _read_upload(file)
         return pipeline.ingest_upload(data, file_name=file.filename, content_type=file.content_type)
 
     @app.get("/api/v1/assets/{asset_id}")
@@ -121,7 +139,7 @@ def create_app(
         try:
             return pipeline.asset_summary(asset_id)
         except ValueError as exc:
-            raise ThreeCraftError("ASSET_NOT_FOUND", "이미지 asset을 찾을 수 없습니다.", status_code=404) from exc
+            raise ThreeCraftError("ASSET_NOT_FOUND", "The image asset was not found.", status_code=404) from exc
 
     @app.post("/api/v1/image-generations", status_code=201)
     def generate_image(request: ImageGenerationRequest) -> dict[str, object]:
@@ -131,10 +149,10 @@ def create_app(
     def get_asset_image(asset_id: str) -> FileResponse:
         try:
             if not store.asset_exists(asset_id):
-                raise ThreeCraftError("ASSET_NOT_FOUND", "이미지 asset을 찾을 수 없습니다.", status_code=404)
+                raise ThreeCraftError("ASSET_NOT_FOUND", "The image asset was not found.", status_code=404)
             path = store.asset_dir(asset_id) / "source.png"
         except ValueError as exc:
-            raise ThreeCraftError("ASSET_NOT_FOUND", "이미지 asset을 찾을 수 없습니다.", status_code=404) from exc
+            raise ThreeCraftError("ASSET_NOT_FOUND", "The image asset was not found.", status_code=404) from exc
         return FileResponse(
             path,
             media_type="image/png",
@@ -173,7 +191,7 @@ def create_app(
         try:
             return jobs.get(job_id).to_dict()
         except ValueError as exc:
-            raise ThreeCraftError("JOB_NOT_FOUND", "변환 job을 찾을 수 없습니다.", status_code=404) from exc
+            raise ThreeCraftError("JOB_NOT_FOUND", "The conversion job was not found.", status_code=404) from exc
 
     @app.post("/api/v1/jobs/{job_id}/cancel")
     def cancel_job(job_id: str) -> dict[str, object]:
@@ -182,7 +200,7 @@ def create_app(
     def require_completed(job_id: str) -> None:
         job = jobs.get(job_id)
         if job.status != JobStatus.COMPLETED:
-            raise ThreeCraftError("ARTIFACT_NOT_READY", "변환 결과가 아직 준비되지 않았습니다.", status_code=409)
+            raise ThreeCraftError("ARTIFACT_NOT_READY", "The conversion result is not ready yet.", status_code=409)
 
     @app.get("/api/v1/jobs/{job_id}/preview")
     def get_preview(job_id: str) -> FileResponse:

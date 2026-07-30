@@ -1,15 +1,16 @@
-# 테스트 전략과 품질 게이트
+# Testing Strategy and Quality Gates
 
-## 1. 품질 원칙
+## 1. Quality principles
 
-- 테스트는 구현 뒤 부록이 아니라 task 완료 조건이다.
-- ML 품질, deterministic geometry, export validity와 서비스 신뢰성을 구분한다.
-- 아름다운 preview가 invalid schematic을 통과시키지 못한다.
-- metric은 필요조건이며 사람이 보기 좋다는 판단만으로 hard gate를 우회하지 않는다.
-- 입력·artifact·review의 hash freshness를 확인한다.
-- fail-open 대신 fail-closed를 기본으로 한다.
+- Tests are completion criteria, not an appendix written after implementation.
+- Separate ML quality, deterministic geometry, export validity, and service reliability.
+- An attractive preview cannot make an invalid schematic pass.
+- Metrics are necessary conditions; subjective appeal cannot bypass a hard gate.
+- Verify freshness of input, artifact, and review hashes.
+- Default to fail-closed rather than fail-open.
+- A supplied image must win in every interface, and an invalid supplied image must never invoke fallback generation.
 
-## 2. 테스트 피라미드
+## 2. Test pyramid
 
 ```text
                  Human/Model Quality Eval
@@ -20,64 +21,76 @@
 
 ### 2.1 Unit
 
-- canonical JSON/hash
-- evidence classification
-- transform chain/reverse mapping
-- sufficiency policy
-- state transition
-- idempotency hash
-- coordinate/scale
-- primitive voxelization
-- component/morphology
-- color distance/palette filter
-- RLE/binary codec
-- BOM
-- schematic primitives/VarInt helper
-- error redaction
-- retention calculation
+- canonical JSON/hash;
+- evidence classification;
+- source resolution (`None` versus empty bytes);
+- transform chain/reverse mapping;
+- sufficiency policy;
+- state transitions;
+- idempotency hashes;
+- coordinates/scale;
+- primitive voxelization;
+- components/morphology;
+- color distance/palette filters;
+- RLE/binary codecs;
+- BOM;
+- schematic primitives/VarInt helpers;
+- error redaction;
+- retention calculations.
 
 ### 2.2 Contract
 
-- JSON Schema valid/invalid fixture
-- TypeScript/Python fixture parity
-- previous schema read compatibility
-- unknown enum fail-fast
-- API OpenAPI example validation
-- binary Python writer↔TypeScript reader
+- valid/invalid JSON Schema fixtures;
+- TypeScript/Python fixture parity;
+- previous-schema read compatibility;
+- unknown-enum fail-fast behavior;
+- OpenAPI example validation;
+- binary Python writer ↔ TypeScript reader;
+- upload=`observed` and generated=`design-intent` provenance.
 
 ### 2.3 Integration
 
-- API + Postgres
-- API + private object storage
-- outbox + queue
-- queue + worker lease
-- stage manifest recovery
-- provider fake/timeout
-- schematic writer + independent parser
-- signed URL owner/expiry
-- cleanup/retention
+Production target:
+
+- API + Postgres;
+- API + private object storage;
+- outbox + queue;
+- queue + worker lease;
+- stage-manifest recovery;
+- fake/timeout provider;
+- signed-URL owner/expiry;
+- cleanup/retention.
+
+Current local integration:
+
+- FastAPI + private local store + process-local job manager;
+- unified multipart `/api/v1/sources`;
+- schematic writer + built-in and independent parsers;
+- idempotency and fail-closed terminal job persistence.
 
 ### 2.4 E2E
 
-- upload→conversion→viewer→download
-- generated image→conversion
-- refresh/SSE reconnect
-- cancellation/retry
-- invalid upload
-- reconstruction failure/fallback
-- export validation failure
-- cross-owner access
-- browser resource lifecycle
+- supplied image → conversion → viewer → download;
+- prompt-only generated fallback → conversion;
+- supplied image plus prompt still uses upload and does not call generation;
+- invalid supplied bytes fail without fallback;
+- blank/no prompt selects the deterministic default only when no image exists;
+- refresh/SSE reconnect in production;
+- cancellation/retry;
+- reconstruction failure/allowed fallback;
+- export-validation failure;
+- cross-owner access in production;
+- browser resource lifecycle.
 
-### 2.5 Eval
+### 2.5 Evaluation
 
-- reconstruction model 비교
-- voxel recognizability
-- block palette 인상
-- hidden surface plausibility
-- input challenge별 failure taxonomy
+- reconstruction-model comparison;
+- voxel recognizability;
+- block-palette impression;
+- hidden-surface plausibility;
+- failure taxonomy by input challenge.
 
-## 3. Fixture 구조
+## 3. Fixture structure
 
 ```text
 tests/fixtures/
@@ -106,231 +119,236 @@ tests/golden/
 └── benchmark-manifests/
 ```
 
-모든 외부 fixture manifest:
+Every external fixture manifest records:
 
-- source
-- license
-- checksum
-- intended use
-- challenge tags
-- expected route/gate
-- redistribution 여부
+- source;
+- license;
+- checksum;
+- intended use;
+- challenge tags;
+- expected route/gate;
+- redistribution permission.
 
-큰 binary는 Git LFS 또는 versioned fixture archive를 사용하되 checksum과 fetch 절차를 저장소에 둔다.
+Use Git LFS or a versioned fixture archive for large binaries, with checksums and fetch procedures in the repository.
 
-## 4. 입력 테스트 matrix
+## 4. Input test matrix
 
-| Fixture | 기대 |
+| Fixture | Expected result |
 |---|---|
-| transparent PNG | alpha 우선, pass |
-| EXIF rotated JPEG | canonical orientation |
-| WebP | decode/canonicalize |
-| extension spoof | reject |
-| corrupt/truncated | reject |
-| huge dimensions | decode 전/초기 reject |
-| animated image | policy reject |
-| empty alpha | foreground blocker |
-| tiny subject | ask/abort |
-| clipped object | route-aware issue |
-| multi-subject | warning/ask |
-| thin structure | risk warning |
-| generated source | design-intent provenance |
-| generated as observed | schema failure |
+| transparent PNG | Prefer alpha, pass |
+| EXIF-rotated JPEG | Canonical orientation |
+| WebP | Decode/canonicalize |
+| extension spoof | Reject |
+| corrupt/truncated | Reject |
+| huge dimensions | Reject before/early in decode |
+| animated image | Policy rejection |
+| empty alpha | Foreground blocker |
+| tiny subject | Ask/abort |
+| cropped object | Route-aware issue |
+| multiple subjects | Warning/ask |
+| thin structure | Risk warning |
+| generated source | `design-intent` provenance |
+| generated as observed | Schema failure |
+| image + prompt | Image wins; provider not called |
+| empty bytes + prompt | Reject; provider not called |
+| no image + blank prompt | Deterministic documented default |
+| no image + null provider | 503 capability unavailable |
 
 ## 5. Reconstruction benchmark
 
-### 5.1 corpus
+### 5.1 Corpus
 
-[06-reconstruction-and-mesh-pipeline.md](06-reconstruction-and-mesh-pipeline.md)의 최소 24개를 사용한다. train/marketing example만 고르지 않고 실패가 예상되는 투명·반사·얇은 구조를 포함한다.
+Use the minimum 24 inputs from [06-reconstruction-and-mesh-pipeline.md](06-reconstruction-and-mesh-pipeline.md). Do not select only training or marketing examples; include expected transparent, reflective, and thin-structure failures.
 
-### 5.2 정량 지표
+### 5.2 Quantitative metrics
 
-- source view silhouette IoU
-- canonical render edge overlap
-- component count
-- non-manifold/open boundary
-- watertight rate
-- repair 변화량
-- 32/64 voxel silhouette loss
-- inference p50/p95
-- peak VRAM/RAM
-- failure/OOM
-- job당 비용
+- source-view silhouette IoU;
+- canonical-render edge overlap;
+- component count;
+- non-manifold/open boundaries;
+- watertight rate;
+- repair delta;
+- 32/64 voxel silhouette loss;
+- inference p50/p95;
+- peak VRAM/RAM;
+- failure/OOM rate;
+- cost per job.
 
-### 5.3 정성 rubric 1~5
+### 5.3 Qualitative rubric (1–5)
 
-- 물체 식별 가능성
-- 전체 비율
-- source silhouette
-- side/back 자연스러움
-- 주요 feature
-- thin/concave structure
-- texture/color
-- Minecraft 결과 적합성
+- subject recognizability;
+- overall proportions;
+- source silhouette;
+- side/back plausibility;
+- major features;
+- thin/concave structures;
+- texture/color;
+- suitability of the Minecraft result.
 
-model 이름을 숨긴 blind comparison을 우선한다. evaluator 간 불일치를 기록한다.
+Prefer blind comparison with model names hidden. Record evaluator disagreement.
 
-## 6. Golden test
+## 6. Golden tests
 
-### 6.1 Mesh→Voxel
+### 6.1 Model → voxel
 
-AI inference output byte를 golden으로 고정하지 않는다. curated mesh fixture로 다음을 고정한다.
+Do not freeze AI inference bytes as golden output. Use curated geometry/relief fixtures to freeze:
 
-- dimensions
-- occupancy/block coordinate
-- component count
-- palette index
-- BOM
-- semantic hash
-- canonical render metric
+- dimensions;
+- occupancy/block coordinates;
+- component count;
+- palette indices;
+- BOM;
+- semantic hash;
+- canonical-render metrics.
 
-algorithm 변경으로 golden이 바뀌면 diff summary, 이유, 기대 개선과 regression 검토가 필요하다.
+An algorithm change that updates a golden requires a diff summary, rationale, expected improvement, and regression review.
 
 ### 6.2 Voxel codec
 
-- Python encode/decode
-- TypeScript decode
-- truncated/length overflow
-- invalid palette index
-- compression bomb limit
-- random round-trip/property test
+- Python encode/decode;
+- TypeScript decode;
+- truncated/length overflow;
+- invalid palette index;
+- decompression-bomb limit;
+- random round-trip/property tests.
 
 ### 6.3 Schematic
 
-- writer output independent parse
-- parser output internal model과 semantic compare
-- BOM compare
-- target version/block validity
-- corruption fixture
-- deterministic semantic hash
+- writer output independently parsed;
+- parser result semantically compared with the internal model;
+- BOM comparison;
+- target-version/block validity;
+- corruption fixtures;
+- deterministic semantic hash.
 
-## 7. Property와 fuzz 테스트
+## 7. Property and fuzz tests
 
-대상:
+Targets:
 
-- dimensions/linear index round-trip
-- axis rotation 4회 identity
-- RLE encode/decode
-- palette reindex 의미 보존
-- sparse/random occupancy
-- NBT/VarInt boundary
-- malformed preview header
-- arbitrary file name/download header
-- state machine illegal transition
+- dimension/linear-index round-trip;
+- identity after four axis rotations;
+- RLE encode/decode;
+- palette reindex preserves meaning;
+- sparse/random occupancy;
+- NBT/VarInt boundaries;
+- malformed preview headers;
+- arbitrary filenames/download headers;
+- illegal state-machine transitions.
 
-fuzz input은 size/time 제한 아래 실행하고 crash artifact를 최소화해 regression fixture로 저장한다.
+Run fuzz input under size/time limits; minimize crash artifacts into regression fixtures.
 
-## 8. Job/복구 테스트
+## 8. Job and recovery tests
 
-필수:
+Required for the production target:
 
-1. 동일 idempotency key/body → 같은 job
-2. 같은 key/다른 body → conflict
-3. queue duplicate delivery → lease 하나
-4. worker crash after artifact upload before DB commit
-5. worker crash after DB candidate before ack
-6. stale worker fencing
-7. provider timeout/rate limit
-8. storage transient error
-9. cancel during reconstruction
-10. cancel vs complete race
-11. retry budget exhaustion
-12. completed job 재처리 금지
-13. published artifact만 download
+1. Same idempotency key/body → same job.
+2. Same key/different body → conflict.
+3. Duplicate queue delivery → one lease.
+4. Worker crash after artifact upload but before database commit.
+5. Worker crash after database candidate but before acknowledgment.
+6. Stale-worker fencing.
+7. Provider timeout/rate limit.
+8. Transient storage error.
+9. Cancellation during reconstruction.
+10. Cancel-versus-complete race.
+11. Retry-budget exhaustion.
+12. Completed job cannot be reprocessed.
+13. Only published artifacts can be downloaded.
 
-각 시나리오는 최종 DB state, object orphan, event와 비용 count를 검증한다.
+Each scenario verifies final database state, orphaned objects, events, and cost counts. The local MVP covers the applicable idempotency, cancellation safety, terminal failure, and artifact-readiness contracts without claiming durable crash recovery.
 
-## 9. Browser 테스트
+## 9. Browser tests
 
-gpthreejs의 Vite/Playwright preflight, runtime smoke, capture smoke와 dispose 원칙을 확장한다.
+Extend the Vite/Playwright preflight, runtime smoke, capture smoke, and disposal principles from gpthreejs.
 
-필수:
+Required target matrix:
 
-- clean install/typecheck/build
-- page console/pageerror 0
-- WebGL canvas ready
-- 32/64 fixture load
-- deterministic canonical capture
-- malformed preview error
-- WebGL unavailable fallback
-- resize/DPR
-- 10회 viewer create/load/dispose
-- renderer.info geometry/texture 안정
-- source/result switch
-- keyboard flow
-- SSE disconnect/poll fallback
+- clean install/typecheck/build;
+- zero console/page errors;
+- WebGL canvas ready;
+- 32/64 fixture loading;
+- deterministic canonical capture;
+- malformed-preview error;
+- WebGL-unavailable fallback;
+- resize/DPR;
+- ten viewer create/load/dispose cycles;
+- stable `renderer.info` geometry/texture counts;
+- source/result switching;
+- keyboard flow;
+- SSE disconnect/poll fallback.
 
-beauty PNG exact hash는 OS/GPU 차이가 있으므로 같은 환경 exact hash, 교차 환경 alpha/semantic/perceptual tolerance를 조합한다.
+Do not use one exact beauty-PNG hash across OS/GPU combinations. Combine exact hashes in one environment with alpha/semantic/perceptual tolerance across environments.
 
-## 10. 성능 benchmark
+## 10. Performance benchmarks
 
 ### 10.1 Intake
 
-- decode/normalize/matte/depth 시간
-- peak memory
-- image size별 결과
+- decode/normalize/matte/depth time;
+- peak memory;
+- results by image size.
 
 ### 10.2 Reconstruction
 
-- cold/warm load
-- inference/repair
-- VRAM/RAM
-- provider network
+- cold/warm load;
+- inference/repair;
+- VRAM/RAM;
+- provider network.
 
 ### 10.3 Voxel/export
 
-조합:
+Combinations:
 
-- 16/32/64/128 experimental
-- surface/hollow/solid
-- small/large palette
-- manifold/non-manifold
-- texture/no texture
+- 16/32/64/128 experimental;
+- surface/hollow/solid;
+- small/large palette;
+- manifold/non-manifold;
+- texture/no texture.
 
-측정:
+Measure:
 
-- voxelization
-- mapping
-- preview encode
-- schematic export/parse
-- output size
+- voxelization;
+- mapping;
+- preview encoding;
+- schematic export/parse;
+- output size.
 
 ### 10.4 Viewer
 
-- fetch/decode/build
-- first render
-- frame p50/p95
-- draw calls/triangles/instances
-- GPU memory proxy
-- dispose 후 안정성
+- fetch/decode/build;
+- first render;
+- frame p50/p95;
+- draw calls/triangles/instances;
+- GPU-memory proxy;
+- post-disposal stability.
 
-## 11. 잠정 성능 예산
+## 11. Provisional performance budgets
 
-| 지표 | 초기 목표 |
+| Metric | Initial target |
 |---|---|
-| 일반 API p95 | 500ms 이하 |
-| progress/event 지연 | 2초 이하 |
-| 32축 preview decode+build | 다운로드 후 2초 목표 |
-| 64축 viewer | 권장 desktop 30FPS 이상 |
-| export round-trip | 32축 수 초 이내 |
-| 지원 설정 worker OOM | 0 |
-| client long task | 반복 100ms 이상 작업 방지 |
-| stage manifest overhead | 전체 job 대비 미미한 수준 |
+| Ordinary API p95 | ≤500 ms |
+| Progress/event delay | ≤2 s |
+| 32-axis preview decode + build | Target ≤2 s after download |
+| 64-axis viewer | ≥30 FPS on recommended desktop |
+| Export round-trip | A few seconds for 32-axis |
+| Worker OOM for supported settings | 0 |
+| Client long tasks | Avoid repeated work ≥100 ms |
+| Stage-manifest overhead | Negligible relative to total job |
 
-baseline 측정 전 threshold를 release claim으로 사용하지 않는다. CI machine과 production hardware metadata를 함께 기록한다.
+Do not turn thresholds into release claims before measuring a baseline. Record CI-machine and production-hardware metadata.
 
-## 12. 품질·Delivery gate
+## 12. Quality and delivery gates
 
 ### Input
 
 - `GATE-IN-001`: asset validated
 - `GATE-IN-002`: provenance/hash valid
-- `GATE-IN-003`: route sufficiency not reject
+- `GATE-IN-003`: route sufficiency is not reject
+- `GATE-IN-004`: supplied-image precedence and no invalid-image fallback
 
 ### Reconstruction
 
-- `GATE-REC-001`: output parse/finite/non-empty
-- `GATE-REC-002`: canonical coordinate/bounds
+- `GATE-REC-001`: output parses and is finite/non-empty
+- `GATE-REC-002`: canonical coordinates/bounds
 - `GATE-REC-003`: route topology capability
 - `GATE-REC-004`: license/model provenance
 
@@ -339,7 +357,7 @@ baseline 측정 전 threshold를 release claim으로 사용하지 않는다. CI 
 - `GATE-VOX-001`: schema/semantic hash
 - `GATE-VOX-002`: dimensions/count
 - `GATE-VOX-003`: palette valid
-- `GATE-VOX-004`: structural diagnostics policy
+- `GATE-VOX-004`: structural-diagnostics policy
 
 ### Review
 
@@ -357,68 +375,80 @@ baseline 측정 전 threshold를 release claim으로 사용하지 않는다. CI 
 
 ### Runtime
 
-- `GATE-RUN-001`: web build/browser smoke
-- `GATE-RUN-002`: resource dispose
+- `GATE-RUN-001`: Web build/browser smoke
+- `GATE-RUN-002`: resource disposal
 - `GATE-RUN-003`: worker recovery
 - `GATE-RUN-004`: authorization
 
-필수 gate가 없거나 stale하면 accept 금지다.
+Acceptance is forbidden when a required gate is missing or stale.
 
 ## 13. CI pipeline
 
-PR:
+Current CI:
 
-1. formatting/lint
-2. Python/TypeScript type check
-3. unit/contract
-4. schema generation drift
-5. frontend/backend build
-6. service integration
-7. voxel/schematic golden
-8. browser E2E fixture provider
-9. container build
-10. dependency/license/secret scan
+1. install pinned Python dependencies;
+2. run the Python regression suite;
+3. clean-install Web dependencies;
+4. run strict TypeScript/Vite build.
+
+Target pull-request pipeline:
+
+1. formatting/lint;
+2. Python/TypeScript typecheck;
+3. unit/contract tests;
+4. schema-generation drift;
+5. frontend/backend build;
+6. service integration;
+7. voxel/schematic golden tests;
+8. browser E2E with fixture provider;
+9. container build;
+10. dependency/license/secret scan.
 
 Scheduled:
 
-- actual GPU model smoke
-- reconstruction benchmark subset/full
-- performance regression
-- cross-browser
-- retention/backup restore
-- vulnerability/model checksum
+- actual GPU-model smoke;
+- reconstruction benchmark subset/full;
+- performance regression;
+- cross-browser;
+- retention/backup restore;
+- vulnerability/model-checksum checks.
 
 Release candidate:
 
-- staging real provider
-- 20+ corpus
-- actual WorldEdit compatibility
-- load/soak
-- rollback rehearsal
+- staging real provider;
+- 20+ corpus;
+- actual WorldEdit compatibility;
+- load/soak;
+- rollback rehearsal.
 
 ## 14. Requirement traceability
 
-테스트 이름/metadata에 요구사항 ID를 포함한다.
+Include requirement IDs in test names or metadata:
 
 ```text
 FR-EXP-003_schematic_semantic_roundtrip
 FR-JOB-005_duplicate_delivery_single_publish
+FR-ASSET-010_supplied_image_precedes_prompt
 NFR-PERF-003_viewer_64_axis
 SEC-AUTH_cross_owner_artifact_denied
 ```
 
-중요 요구사항에 test가 없으면 release checklist에서 명시적 예외와 owner가 필요하다.
+A critical requirement without a test needs an explicit exception and owner in the release checklist.
 
-## 15. MVP release 품질 조건
+## 15. MVP release quality conditions
 
-- blocker/critical defect 0
-- 지원 input E2E 성공
-- schematic semantic round-trip 100%
-- 실제 WorldEdit smoke 성공
-- cross-owner auth test 성공
-- 지원 resolution OOM 없음
-- browser runtime/pageerror 0
-- resource leak gate 통과
-- model/palette/exporter version과 license 기록
-- known limitation UI/문서 표시
-- rollback 가능 image/artifact 존재
+Current local baseline is 33 Python tests plus strict TypeScript/Vite build, independent `nbtlib` parsing, real local CLI/HTTP smoke tests, package checks, and documentation/configuration validation. These prove the local deterministic scope only.
+
+A production release additionally requires:
+
+- zero blocker/critical defects;
+- successful supported-input E2E;
+- 100% schematic semantic round-trip;
+- actual WorldEdit smoke success;
+- cross-owner authorization success;
+- no OOM at supported resolutions;
+- zero browser runtime/page errors;
+- resource-leak gate success;
+- recorded model/palette/exporter versions and licenses;
+- known limitations shown in UI/docs;
+- rollback-capable images/artifacts.

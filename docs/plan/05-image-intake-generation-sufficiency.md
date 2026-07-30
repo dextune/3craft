@@ -1,31 +1,45 @@
-# 이미지 Intake, 생성, 전처리와 충분성
+# Image Intake, Generation, Preprocessing, and Sufficiency
 
-## 1. 목적
+## 1. Purpose
 
-입력 단계는 단순 upload가 아니라 이후 결과의 신뢰 수준을 결정하는 evidence pipeline이다. 원본을 보존하고 모든 파생물을 추적하며, 현재 입력으로 선택한 reconstruction route를 안정적으로 수행할 수 있는지 먼저 판단한다.
+Intake is an evidence pipeline, not merely an upload step. It determines the confidence of later results by preserving the source, tracking every derivative, and first deciding whether the selected reconstruction route can run reliably with the available input.
 
-## 2. 지원 입력과 초기 제한
+## 2. Supported input and initial limits
 
 MVP:
 
 - PNG
 - JPEG
 - WebP
-- 단일 frame
-- 단일 중심 물체
-- 최소 한 변 256px 권장
-- 최대 byte와 decoded pixel 제한은 configuration
+- one frame
+- one centered subject
+- recommended shorter side of at least 256 px
+- configurable maximum bytes and decoded pixels
 
-초기 제안:
+Initial proposal, implemented by the local MVP unless noted:
 
-- 10MB 이하
-- 24 megapixel 이하
-- animated PNG/WebP/GIF 거부
-- 지나치게 긴 aspect ratio 거부 또는 warning
+- at most 10 MB;
+- at most 24 megapixels;
+- reject animated PNG/WebP/GIF;
+- reject or warn on extreme aspect ratios.
 
-제한 값은 security test와 운영 지표 후 조정한다. client 제한은 UX용이고 server가 다시 검사한다.
+Tune limits after security tests and operational measurements. Client limits exist for UX; the server always validates again.
 
-## 3. Upload 단계
+## 3. Source resolution and upload
+
+### 3.1 Authoritative source selection
+
+Source resolution obeys this order:
+
+1. If image bytes are supplied, process those bytes as an upload even when a prompt also exists.
+2. `None` means no image. Empty bytes are a supplied invalid image, not absence.
+3. Generate from a prompt—or from the documented deterministic default—only when image bytes are absent.
+4. Decode, MIME, size, or sufficiency failure of a supplied image is reported; it never causes silent generation.
+5. Uploads are `observed`; generated fallback images are `design-intent`.
+
+The current local interface exposes this through `POST /api/v1/sources`, `threecraft build`, and one unified Web form. Legacy explicit upload and generation interfaces remain available.
+
+### 3.2 Upload stages
 
 ```text
 client preflight
@@ -34,38 +48,40 @@ client preflight
 → server signature + decode
 → canonical image
 → asset manifest + SHA-256
-→ ready 또는 rejected
+→ ready or rejected
 ```
 
-검사 순서:
+Validation order:
 
-1. declared byte size와 quota
-2. magic byte
-3. 안전한 decoder로 header 검사
-4. width/height/frame/pixel count
-5. 전체 decode
-6. EXIF orientation
-7. ICC profile 처리와 sRGB normalization
-8. alpha 유효성
-9. canonical re-encode
-10. original/canonical checksum과 manifest
+1. declared byte size and quota;
+2. magic bytes;
+3. header inspection with a safe decoder;
+4. width, height, frame count, and pixel count;
+5. full decode;
+6. EXIF orientation;
+7. ICC handling and sRGB normalization;
+8. alpha validity;
+9. canonical re-encoding;
+10. source/canonical checksums and manifest.
 
-확장자와 사용자 파일명은 신뢰하지 않는다. 원본 object는 immutable하고 canonical object는 별도 ID를 가진다.
+Do not trust extensions or user filenames. The original object is immutable and the canonical object has a separate identity.
 
-## 4. Provenance와 evidence 분류
+## 4. Provenance and evidence classes
 
-| source | origin | evidenceClass | 설명 |
+| Source | Origin | Evidence class | Meaning |
 |---|---|---|---|
-| 사용자가 올린 실제 사진/그림 | upload | observed | 입력에서 실제로 보이는 것만 observed |
-| 서비스가 prompt로 생성 | generated | design-intent | 사용자가 원하는 설계 목표 |
-| 생성 이미지의 보정본 | edited | design-intent | 원본 lineage 유지 |
-| depth/mask/normal | derived | inferred | 알고리즘 추정 |
-| 생성된 side/back view | generated | design-hypothesis | 일관성 검증 전 hypothesis |
-| reconstruction mesh 뒷면 | derived | inferred | observed로 승격 금지 |
+| Photograph/drawing uploaded by the user | upload | observed | Only what is actually visible is observed |
+| Service-generated from a prompt | generated | design-intent | The user's design target |
+| Edited generated image | edited | design-intent | Retains source lineage |
+| Depth/mask/normal | derived | inferred | Algorithmic estimate |
+| Generated side/back view | generated | design-hypothesis | A hypothesis until consistency validation |
+| Back of a reconstruction mesh | derived | inferred | Must not be promoted to observed |
 
-사용자가 생성 결과를 승인해도 `design-intent`가 `observed`로 바뀌지 않는다. 승인은 “목표로 채택”했다는 별도 metadata다.
+User approval of generated output does not change `design-intent` into `observed`. Approval is separate metadata meaning “adopted as the target.”
 
-## 5. 이미지 생성
+## 5. Image generation
+
+The current implementation provides only a local deterministic procedural fixture. The provider contract below is a production roadmap and must not be presented as implemented AI generation.
 
 ### 5.1 Provider port
 
@@ -75,132 +91,130 @@ class ImageGenerationProvider(Protocol):
     async def cancel(self, provider_request_id: str) -> None: ...
 ```
 
-내부 request:
+Internal requests contain:
 
-- user prompt
-- system profile ID
-- aspect ratio
-- count
-- seed 또는 seed policy
-- safety context
-- output constraints
-- idempotency/provider correlation
+- user prompt;
+- system profile ID;
+- aspect ratio;
+- count;
+- seed or seed policy;
+- safety context;
+- output constraints;
+- idempotency/provider correlation.
 
-provider-specific parameter는 adapter configuration에 둔다.
+Provider-specific parameters belong in adapter configuration.
 
 ### 5.2 Single-object prompt profile
 
-사용자 prompt의 의미를 변경하지 않는 범위에서 다음 지침을 추가한다.
+Add these instructions only where they do not change the meaning of the user's prompt:
 
-- exactly one primary object
-- entire object inside frame
-- neutral/transparent/simple background
-- no text, watermark or frame
-- moderate orthographic-like or three-quarter camera
-- even lighting, limited cast shadow
-- no motion blur or extreme depth of field
-- distinguishable silhouette
+- exactly one primary object;
+- entire object inside frame;
+- neutral, transparent, or simple background;
+- no text, watermark, or frame;
+- moderate orthographic-like or three-quarter camera;
+- even lighting and limited cast shadow;
+- no motion blur or extreme depth of field;
+- distinguishable silhouette.
 
-원문 prompt, profile version과 최종 provider prompt를 구분해 보관한다. 사용자에게 profile 적용 여부를 알린다.
+Store the original prompt, profile version, and final provider prompt separately. Tell the user when a profile is applied.
 
 ### 5.3 Provider budget
 
-job/user 기준:
+Per job/user:
 
-- 최대 후보 수
-- 최대 edit/generate 횟수
-- 최대 wall time
-- 최대 비용 추정
-- provider retry 횟수
-- 동시 요청 수
+- maximum candidate count;
+- maximum edit/generation count;
+- maximum wall time;
+- maximum estimated cost;
+- provider retry count;
+- concurrent request count.
 
-budget 소진은 무한 retry가 아니라 `ask`/`failed`로 끝난다. provider가 설정되지 않으면 null adapter가 실제 이미지처럼 보이는 placeholder를 만들지 않고 capability unavailable을 반환한다.
+Budget exhaustion ends in `ask` or `failed`, never an unlimited retry. If no provider is configured, a null adapter returns capability unavailable instead of creating a plausible-looking placeholder. Supplied-image processing remains available.
 
-### 5.4 Provider output ingest
+### 5.4 Provider-output intake
 
-provider URL을 영구 source로 사용하지 않는다.
+Never use a provider URL as a permanent source.
 
-1. 허용 domain/provider response인지 확인
-2. server-side로 제한된 크기만 다운로드
-3. signature/decode/security 검사
-4. private storage에 canonical asset 생성
-5. provider provenance와 checksum 저장
-6. temporary provider URL 폐기
+1. Confirm that the response came from a configured provider/allowlisted domain.
+2. Download only a bounded response through the provider adapter.
+3. Run signature, decode, and security checks.
+4. Create a canonical asset in private storage.
+5. Store provider provenance and checksums.
+6. Discard the temporary provider URL.
 
-임의 사용자 URL fetch와 이 경로를 공유하지 않는다.
+This path is never shared with arbitrary user URL fetching. The current local MVP performs no such network request and transmits no user image externally.
 
-## 6. Segmentation과 matte
+## 6. Segmentation and matte
 
-우선순위:
+Priority:
 
-1. 신뢰 가능한 alpha
-2. 사용자가 제공/수정한 mask
-3. segmentation provider
-4. local heuristic fallback
-5. 사용자에게 입력 개선 요청
+1. trustworthy alpha;
+2. user-provided or corrected mask;
+3. segmentation provider;
+4. local heuristic fallback;
+5. request improved input from the user.
 
-matte diagnostics:
+Matte diagnostics:
 
-- foreground ratio
-- bounding box와 frame touch
-- connected component 수와 크기
-- internal hole 비율
-- edge noise
-- confidence
-- shadow 포함 가능성
-- hair/fur/thin structure 가능성
+- foreground ratio;
+- bounding box and frame contact;
+- connected-component count and sizes;
+- internal-hole ratio;
+- edge noise;
+- confidence;
+- likelihood of included shadows;
+- hair/fur/thin-structure likelihood.
 
-자동 mask가 불확실하면 조용히 사용하지 않고 original/masked toggle과 warning을 표시한다.
-
-MVP에서 full brush editor를 제공하지 않아도 `use alpha`, `use original`, `retry segmentation`과 입력 교체를 제공한다.
+Do not quietly use an uncertain automatic mask. Show an original/masked comparison and warning. Even without a full brush editor, the MVP should offer `use alpha`, `use original`, `retry segmentation`, and source replacement.
 
 ## 7. Reversible normalization
 
-operation chain:
+Operation chain:
 
-- orient
-- color convert
-- crop-to-mask with margin
-- pad to model aspect
-- resize
-- background compose
-- alpha premultiply/unpremultiply 필요 시 기록
+- orient;
+- color conversion;
+- crop to mask with margin;
+- pad to model aspect;
+- resize;
+- background composition;
+- record alpha premultiplication/unpremultiplication when needed.
 
-규칙:
+Rules:
 
-- 원본을 덮어쓰지 않는다.
-- 각 operation은 input/output size, offset, parameters와 reversibility를 기록한다.
-- destructive crop보다 padding을 우선한다.
-- model별 input을 별도 artifact로 만든다.
-- source-space overlay를 위해 역변환 가능한 구간을 제공한다.
+- Never overwrite the original.
+- Record input/output size, offset, parameters, and reversibility for each operation.
+- Prefer padding over destructive cropping.
+- Create model-specific inputs as separate artifacts.
+- Preserve an invertible portion for source-space overlays.
 
 ## 8. 3Craft Sense Pack
 
-MVP artifact:
+MVP artifacts:
 
 - `canonical.png`
 - `matte.png`
 - `masked.png`
 - `edges.png`
-- `depth-proxy` 이미지/데이터
+- `depth-proxy` image/data
 - `input-palette.json`
 - `diagnostics.json`
 - `transform-chain.json`
 - `sense-pack.json`
 
-모드:
+Modes:
 
-| 모드 | 용도 | 계산 |
+| Mode | Purpose | Computation |
 |---|---|---|
-| draft | 빠른 UI 진단 | metadata, alpha/matte, 기본 palette |
-| standard | 기본 conversion | edges, depth, diagnostics 포함 |
-| high | 64축/고품질 route | 추가 model-specific 진단과 multi-view consistency |
+| draft | Fast UI diagnosis | Metadata, alpha/matte, basic palette |
+| standard | Default conversion | Includes edges, depth, diagnostics |
+| high | 64-axis/high-quality route | Additional model-specific diagnostics and multi-view consistency |
 
-Sense Pack은 reconstruction input이 아니라도 relief, route selection, metric과 user guidance에 사용한다.
+Even when it is not reconstruction input, the Sense Pack supports relief, route selection, metrics, and user guidance.
 
 ## 9. Sufficiency policy
 
-### 9.1 출력
+### 9.1 Output
 
 - `verdict`: pass/conditional/reject
 - `agentAction`: continue/ask/abort
@@ -211,7 +225,7 @@ Sense Pack은 reconstruction input이 아니라도 relief, route selection, metr
 - policy version
 - route
 
-### 9.2 공통 blocker
+### 9.2 Common blockers
 
 - `FILE_MISSING`
 - `FILE_UNSUPPORTED`
@@ -224,9 +238,9 @@ Sense Pack은 reconstruction input이 아니라도 relief, route selection, metr
 - `MASK_INVALID`
 - `POLICY_OR_LICENSE_BLOCKED`
 
-blocker가 있으면 production job을 만들지 않는다.
+Do not create a production job while any blocker exists.
 
-### 9.3 Warning/conditional issue
+### 9.3 Warning/conditional issues
 
 - `MULTIPLE_SUBJECTS`
 - `BACKGROUND_COMPLEX`
@@ -242,120 +256,123 @@ blocker가 있으면 production job을 만들지 않는다.
 - `VIEW_INCONSISTENT`
 - `PALETTE_COLOR_OUT_OF_GAMUT`
 
-### 9.4 Route별 정책
+### 9.4 Route-specific policy
 
 #### Relief
 
-필수:
+Required:
 
-- usable foreground
-- front/source view
-- depth proxy 또는 대체 height rule
+- usable foreground;
+- front/source view;
+- depth proxy or alternative height rule.
 
-side/back view 부족은 blocker가 아니다. 결과가 2.5D임을 명확히 표시한다.
+Missing side/back views are not blockers. Clearly label the result as 2.5D.
 
 #### Single-image mesh
 
-필수:
+Required:
 
-- 단일 주 component
-- 충분한 silhouette
-- frame 내 전체 물체
-- 선택 model이 지원하는 입력 형식
+- one primary component;
+- sufficient silhouette;
+- complete object inside the frame;
+- an input format supported by the selected model.
 
-side/back 부족은 일반적으로 warning이지만 high fidelity 목표에서 `ask`가 될 수 있다.
+Missing side/back views are normally warnings but may become `ask` for a high-fidelity target.
 
 #### Multi-view mesh
 
-필수:
+Required:
 
-- 최소 view 수
-- view label
-- 같은 subject identity
-- scale/camera 일관성
-- cross-view feature consistency
+- minimum view count;
+- view labels;
+- same subject identity;
+- scale/camera consistency;
+- cross-view feature consistency.
 
-생성 view가 서로 다르면 reject 또는 해당 view 제외를 요구한다.
+If generated views disagree, reject them or require exclusion of the inconsistent view.
 
-### 9.5 설정과 gate 강도
+### 9.5 Settings and gate strength
 
-- 16축은 작은 detail 부족을 완화할 수 있다.
-- 64축은 high-resolution source와 더 높은 matte confidence를 요구한다.
-- transparent/reflection risk는 reconstruction route에 따라 severity가 다르다.
-- user override는 warning/일부 conditional만 가능하다.
-- override에는 user, time, issue, 이유와 결과 warning을 기록한다.
+- A 16-axis target can tolerate missing small details.
+- A 64-axis target requires a higher-resolution source and higher matte confidence.
+- Transparency/reflection risk has route-dependent severity.
+- Users may override only warnings and selected conditional issues.
+- Record user, time, issue, reason, and result warning for every override.
 
 ## 10. Multi-view ReferenceSet
 
-후속 또는 고품질 입력:
+Later or high-quality input may contain:
 
-- source/front
-- left/right side
-- back
-- optional top/detail
+- source/front;
+- left/right side;
+- back;
+- optional top/detail.
 
-각 view에는 declared/detected view, asset hash, evidence class와 visible feature가 있다. consistency 검사 예:
+Each view records declared/detected view, asset hash, evidence class, and visible features. Example consistency checks:
 
-- dominant palette 차이
-- silhouette size ratio
-- 주요 component 수
-- 사용자 표식/손잡이/뿔 등 feature 존재
-- 좌우가 뒤바뀐 가능성
-- 생성된 view의 subject drift
+- dominant-palette difference;
+- silhouette-size ratio;
+- primary-component count;
+- presence of identifying marks, handles, or horns;
+- possible left/right reversal;
+- subject drift in generated views.
 
-불일치 view를 평균내지 않고 issue로 드러낸다.
+Surface inconsistent views as issues instead of averaging them away.
 
-## 11. 사용자 메시지 원칙
+## 11. User-message principles
 
-나쁜 메시지:
+Bad messages:
 
-- “AI 변환에 실패했습니다.”
+- “AI conversion failed.”
 - “Error code 422.”
 
-좋은 메시지:
+Good messages:
 
-- “물체가 이미지 오른쪽에서 잘려 있어 완전한 형상을 만들기 어렵습니다. 물체 전체가 보이는 이미지를 사용하거나 relief 모드를 선택하세요.”
-- “이 이미지는 정면만 보여 뒷면은 AI가 추정합니다. side view를 추가하면 더 안정적인 결과를 얻을 수 있습니다.”
+- “The object is cropped on the right, so a complete shape cannot be created reliably. Use an image showing the whole object or choose relief mode.”
+- “This image shows only the front, so the back will be inferred. Adding a side view can produce a more stable result.”
 
-public 메시지와 operator diagnostic을 분리한다.
+Separate public messages from operator diagnostics.
 
-## 12. 출력과 handoff
+## 12. Output and handoff
 
-Sufficiency를 통과한 handoff에는 다음이 있다.
+A handoff that passed sufficiency contains:
 
-- immutable source asset
-- canonical asset
-- ReferenceSet
-- TransformChain
-- Sense Pack
-- SufficiencyReport
-- 선택 route와 settings
-- input semantic hash
+- immutable source asset;
+- canonical asset;
+- ReferenceSet;
+- TransformChain;
+- Sense Pack;
+- SufficiencyReport;
+- selected route and settings;
+- input semantic hash.
 
-reconstruction stage는 직접 upload path를 받지 않고 이 handoff manifest를 받는다.
+The reconstruction stage receives this handoff manifest, never a direct upload path.
 
-## 13. 테스트와 완료 조건
+## 13. Tests and completion criteria
 
-필수 fixture:
+Required fixtures:
 
-- transparent PNG
-- EXIF-rotated JPEG
-- valid WebP
-- corrupt image
-- MIME spoof
-- huge dimensions
-- empty alpha
-- frame-filling/clipped subject
-- multiple components
-- thin handle/antenna
-- generated image provenance
-- inconsistent generated side view
+- transparent PNG;
+- EXIF-rotated JPEG;
+- valid WebP;
+- corrupt image;
+- MIME spoof;
+- huge dimensions;
+- empty alpha;
+- frame-filling/cropped subject;
+- multiple components;
+- thin handle/antenna;
+- generated-image provenance;
+- inconsistent generated side view;
+- valid image plus prompt, proving the provider is not called;
+- empty supplied bytes, proving no generated fallback occurs.
 
-완료 조건:
+Completion criteria:
 
-- original과 canonical checksum/lineage가 기록됨
-- generated asset이 observed로 분류되지 않음
-- normalization metadata로 overlay 좌표를 재현함
-- route별 동일 fixture가 기대 verdict/action을 냄
-- provider unavailable/budget exhausted가 fake result 없이 종료됨
-- blocker input이 queue에 production conversion을 만들지 않음
+- source and canonical checksums/lineage are recorded;
+- no generated asset is classified as observed;
+- overlay coordinates can be reproduced from normalization metadata;
+- each route produces expected verdict/action values for shared fixtures;
+- provider unavailable/budget exhausted terminates without a fake result;
+- blocker input creates no production conversion in the queue;
+- source precedence behaves identically in pipeline, API, CLI, and Web interfaces.
