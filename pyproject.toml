@@ -20,7 +20,7 @@ classifiers = [
   "Topic :: Multimedia :: Graphics :: 3D Modeling",
 ]
 dependencies = [
-  "fastapi==0.136.1",
+  "fastapi==0.141.1",
   "pillow==12.2.0",
   "pydantic==2.13.4",
   "python-multipart==0.0.32",
